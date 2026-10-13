@@ -12,6 +12,7 @@ interface MicrogameOverlayProps {
   hearts: number;
   maxHearts: number;
   roundNumber: number;
+  isNightMode?: boolean;
 }
 
 export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
@@ -23,6 +24,7 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
   hearts,
   maxHearts,
   roundNumber,
+  isNightMode = false,
 }) => {
   const totalDuration = Math.max(2.4, microgame.durationSec / speedMultiplier);
   const [timeLeft, setTimeLeft] = useState(totalDuration);
@@ -243,13 +245,19 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
   return (
     <div className="fixed inset-0 z-50 pointer-events-auto flex items-center justify-center p-4 bg-[#1c1917]/50 backdrop-blur-md animate-in fade-in duration-200">
       
-      {/* Variation 3 Editorial Modal Window */}
-      <div className="relative w-full max-w-xl bg-white/95 backdrop-blur-xl border border-[#1c1917]/15 rounded-3xl p-6 sm:p-8 shadow-[0_30px_60px_rgba(0,0,0,0.12)] flex flex-col items-center gap-5 text-[#1c1917]">
+      {/* Editorial Modal Window */}
+      <div className={`relative w-full max-w-xl border rounded-3xl p-6 sm:p-8 shadow-[0_30px_60px_rgba(0,0,0,0.25)] flex flex-col items-center gap-5 transition-colors duration-300 ${
+        isNightMode
+          ? 'bg-stone-900/95 border-[#f8f7f4]/20 text-[#f8f7f4]'
+          : 'bg-white/95 border-[#1c1917]/15 text-[#1c1917]'
+      }`}>
         
         {/* Close / Dismiss milestone button */}
         <button
           onClick={onDismiss}
-          className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-[#1c1917]/10 text-[#1c1917]/60 hover:text-[#1c1917] transition-colors"
+          className={`absolute top-5 right-5 p-1.5 rounded-full transition-colors ${
+            isNightMode ? 'hover:bg-[#f8f7f4]/10 text-[#f8f7f4]/60 hover:text-[#f8f7f4]' : 'hover:bg-[#1c1917]/10 text-[#1c1917]/60 hover:text-[#1c1917]'
+          }`}
           title="Dismiss Challenge"
         >
           <X className="w-5 h-5" />
@@ -261,19 +269,21 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
             <span className="font-mono-space text-[10px] uppercase tracking-[0.15em] text-[#d97706] font-semibold">
               Signal Milestone · Round {roundNumber}
             </span>
-            <div className="flex items-center gap-1 bg-[#f8f7f4] px-2.5 py-0.5 rounded-full border border-[#1c1917]/10">
+            <div className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full border ${
+              isNightMode ? 'bg-stone-800 border-[#f8f7f4]/10' : 'bg-[#f8f7f4] border-[#1c1917]/10'
+            }`}>
               {Array.from({ length: maxHearts }).map((_, i) => (
                 <Heart
                   key={i}
                   className={`w-3.5 h-3.5 ${
-                    i < hearts ? 'text-rose-600 fill-rose-600' : 'text-[#1c1917]/20'
+                    i < hearts ? 'text-rose-500 fill-rose-500' : isNightMode ? 'text-[#f8f7f4]/20' : 'text-[#1c1917]/20'
                   }`}
                 />
               ))}
             </div>
           </div>
 
-          <h2 className="font-serif-cormorant italic text-3xl sm:text-4xl font-semibold text-[#1c1917] flex items-center gap-2.5">
+          <h2 className="font-serif-cormorant italic text-3xl sm:text-4xl font-semibold flex items-center gap-2.5">
             <span>{microgame.icon}</span>
             <span>{microgame.instruction}</span>
           </h2>

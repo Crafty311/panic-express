@@ -1,3 +1,5 @@
+import { BiomeType, StationVariant } from './scenery';
+
 export interface Station {
   id: string;
   name: string;
@@ -5,6 +7,8 @@ export interface Station {
   landmark: string;
   rewardCoins: number;
   description: string;
+  biome?: BiomeType;
+  stationVariant?: StationVariant;
 }
 
 export interface Passenger {

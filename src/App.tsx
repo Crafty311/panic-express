@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Station, 
   Passenger, 
@@ -24,6 +24,28 @@ export default function App() {
   const currentStation = MODERN_STATIONS[stationIndex % MODERN_STATIONS.length];
   const nextStation = MODERN_STATIONS[(stationIndex + 1) % MODERN_STATIONS.length];
   const [distanceToNextKm, setDistanceToNextKm] = useState<number>(nextStation.distanceKm);
+
+  // Day / Night Atmosphere State
+  const [isNightMode, setIsNightMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('panic_express_night_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleNightMode = () => {
+    setIsNightMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('panic_express_night_mode', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Sectional Tunnel Transition (triggers when entering new biomes or departing stations)
+  const [isTunnelTransition, setIsTunnelTransition] = useState<boolean>(false);
 
   // Economy & Scores
   const [score, setScore] = useState<number>(0);
@@ -145,13 +167,19 @@ export default function App() {
     setIsStationArrivalOpen(true);
   };
 
-  // Depart Station
+  // Depart Station with Sectional Mountain Tunnel Biome Transition
   const handleDepartStation = () => {
     setIsStationArrivalOpen(false);
     const nextIdx = (stationIndex + 1) % MODERN_STATIONS.length;
     setStationIndex(nextIdx);
     setDistanceToNextKm(MODERN_STATIONS[(nextIdx + 1) % MODERN_STATIONS.length].distanceKm);
     distanceSinceLastSignalRef.current = 0;
+
+    // Trigger atmospheric 2.8s mountain tunnel transition between regions
+    setIsTunnelTransition(true);
+    setTimeout(() => {
+      setIsTunnelTransition(false);
+    }, 2800);
   };
 
   // Accept Signal Milestone Challenge
@@ -225,13 +253,23 @@ export default function App() {
     setHearts(4);
   };
 
+  const currentBiome = currentStation.biome || 'meadow_plain';
+  const stationVariant = nextStation.stationVariant || 'meadowbrook_whistlestop';
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#f8f7f4] select-none font-sans-inter text-[#1c1917]">
+    <div className={`relative w-screen h-screen overflow-hidden select-none font-sans-inter transition-colors duration-700 ${
+      isNightMode ? 'bg-[#090d16] text-[#f8f7f4]' : 'bg-[#f8f7f4] text-[#1c1917]'
+    }`}>
       
-      {/* 1. PANORAMIC OBSERVATION SCENERY CANVAS */}
+      {/* 1. PANORAMIC OBSERVATION SCENERY CANVAS (MULTI-BIOME, DAY/NIGHT & 10 STATIONS) */}
       <TrainWindowCanvas
         speedKmH={speedKmH * speedMultiplier}
-        tunnelActive={activeMicrogame?.category === 'duck_tunnel'}
+        tunnelActive={activeMicrogame?.category === 'duck_tunnel' || isTunnelTransition}
+        isNightMode={isNightMode}
+        currentBiome={currentBiome}
+        stationVariant={stationVariant}
+        stationName={nextStation.name}
+        distanceToNextKm={distanceToNextKm}
       />
 
       {/* 2. MODERN SLEEK GLASSMORPHIC OBSERVATION SALON COMPARTMENT */}
@@ -244,6 +282,9 @@ export default function App() {
         distanceToNextKm={distanceToNextKm}
         coins={coins}
         score={score}
+        isNightMode={isNightMode}
+        currentBiome={currentBiome}
+        onToggleNightMode={handleToggleNightMode}
         onWhistleClick={handleWhistleClick}
         onOpenDepot={() => setIsUpgradeShopOpen(true)}
         signalPostAvailable={signalPostAvailable}
@@ -253,7 +294,7 @@ export default function App() {
         isPlayingMicrogame={isPlayingMicrogame}
       />
 
-      {/* 3. SIGNAL POST PROCEDURAL MICROGAME MODAL (OVER 100+ PROCEDURAL VARIANTS) */}
+      {/* 3. SIGNAL POST PROCEDURAL MICROGAME MODAL */}
       {isPlayingMicrogame && activeMicrogame && (
         <MicrogameOverlay
           key={activeMicrogame.id}
@@ -262,12 +303,14 @@ export default function App() {
           onSuccess={handleMicrogameSuccess}
           onFailure={handleMicrogameFailure}
           onDismiss={() => {
+            audioEngine.playMechanicalClick();
             setIsPlayingMicrogame(false);
             setActiveMicrogame(null);
           }}
           hearts={hearts}
           maxHearts={maxHearts}
           roundNumber={roundNumber}
+          isNightMode={isNightMode}
         />
       )}
 
@@ -278,6 +321,7 @@ export default function App() {
         nextStation={MODERN_STATIONS[(stationIndex + 2) % MODERN_STATIONS.length]}
         rewardCoins={nextStation.rewardCoins}
         newPassenger={currentPassenger}
+        isNightMode={isNightMode}
         onContinue={handleDepartStation}
       />
 
@@ -288,6 +332,7 @@ export default function App() {
         coins={coins}
         upgrades={upgrades}
         customization={customization}
+        isNightMode={isNightMode}
         onBuySpeed={handleBuySpeed}
         onBuyBento={handleBuyBento}
         onBuyExtraHeart={handleBuyExtraHeart}
