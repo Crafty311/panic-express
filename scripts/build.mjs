@@ -1,0 +1,11 @@
+import { cp, mkdir, rm, stat } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const out = path.join(root, 'dist');
+await rm(out, { recursive: true, force: true });
+await mkdir(out, { recursive: true });
+for (const entry of ['index.html', 'src']) await cp(path.join(root, entry), path.join(out, entry), { recursive: true });
+const s = await stat(path.join(out, 'index.html'));
+if (s.size < 500) throw new Error('Build failed: index.html was not copied correctly.');
+console.log(`Build complete: ${out}`);

@@ -1,0 +1,12 @@
+{
+  "name": "panic-express-last-train-home",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A fast illustrated 100-challenge minigame arcade.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test"
+  }
+}
