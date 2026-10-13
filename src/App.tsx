@@ -1,448 +1,297 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Station, 
   Passenger, 
   CompartmentCustomization, 
-  TrainUpgrades, 
-  WeatherType, 
-  TimeOfDay, 
-  BiomeType, 
-  Challenge 
+  TrainUpgrades 
 } from './types/game';
-import { STATIONS, PASSENGER_TEMPLATES } from './data/stations';
+import { 
+  MODERN_STATIONS, 
+  COZY_PASSENGERS, 
+  MicrogameInstance, 
+  generateProceduralMicrogame 
+} from './data/microgames';
 import { audioEngine } from './services/audioService';
 import { TrainWindowCanvas } from './components/TrainWindowCanvas';
 import { CompartmentInterior } from './components/CompartmentInterior';
-import { ConductorChallengesModal } from './components/ConductorChallengesModal';
+import { MicrogameOverlay } from './components/MicrogameOverlay';
 import { StationArrivalModal } from './components/StationArrivalModal';
 import { UpgradeShopModal } from './components/UpgradeShopModal';
-import { WeatherControls } from './components/WeatherControls';
 
 export default function App() {
-  // Station & Route Progression
+  // Station & Route
   const [stationIndex, setStationIndex] = useState<number>(0);
-  const currentStation = STATIONS[stationIndex % STATIONS.length];
-  const nextStation = STATIONS[(stationIndex + 1) % STATIONS.length];
+  const currentStation = MODERN_STATIONS[stationIndex % MODERN_STATIONS.length];
+  const nextStation = MODERN_STATIONS[(stationIndex + 1) % MODERN_STATIONS.length];
   const [distanceToNextKm, setDistanceToNextKm] = useState<number>(nextStation.distanceKm);
-  const [currentBiome, setCurrentBiome] = useState<BiomeType>(currentStation.biome);
 
-  // Train Physics & Propulsion
-  const [speedKmH, setSpeedKmH] = useState<number>(75);
-  const [speedBoostDuration, setSpeedBoostDuration] = useState<number>(0);
-  const [fuel, setFuel] = useState<number>(85);
-  const maxFuel = 100;
-
-  // Economy & Progression
-  const [coins, setCoins] = useState<number>(140);
-  const [conductorPoints, setConductorPoints] = useState<number>(180);
+  // Economy & Scores
+  const [score, setScore] = useState<number>(0);
+  const [coins, setCoins] = useState<number>(120);
+  const [roundNumber, setRoundNumber] = useState<number>(1);
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1.0);
 
   // Upgrades
   const [upgrades, setUpgrades] = useState<TrainUpgrades>({
-    engineLevel: 1,
-    fuelEfficiencyLevel: 1,
-    comfortRating: 1,
-    wiperSystem: false,
-    aerodynamicCowling: false,
+    maxSpeedLevel: 1,
+    extraHeartUnlocked: false,
+    bentoBoxLevel: 1,
+    streamlinedAerodynamics: false,
   });
 
-  // Passengers
-  const [passengers, setPassengers] = useState<Passenger[]>([
-    {
-      id: 'pass_1',
-      name: 'Madame Celeste',
-      role: 'Antiquarian Scholar',
-      avatar: '📜',
-      destinationStationId: nextStation.id,
-      farePaid: 45,
-      tipPaid: 15,
-      dialogue: 'The golden light outside our cabin is truly picturesque.',
-      luggage: 'Embossed leather travel trunk',
-    },
-    {
-      id: 'pass_2',
-      name: 'Alpinist Marco',
-      role: 'Botanist Explorer',
-      avatar: '🌿',
-      destinationStationId: nextStation.id,
-      farePaid: 50,
-      tipPaid: 20,
-      dialogue: 'The speed of this express is magnificent across the mountain passes.',
-      luggage: 'Alpine brass rucksack',
-    },
-  ]);
+  const maxHearts = upgrades.extraHeartUnlocked ? 4 : 3;
+  const [hearts, setHearts] = useState<number>(3);
 
-  // Passengers settlement for station arrival
-  const [arrivedPassengers, setArrivedPassengers] = useState<Passenger[]>([]);
-  const [boardingPassengers, setBoardingPassengers] = useState<Passenger[]>([]);
-  const [arrivalEarnings, setArrivalEarnings] = useState<number>(0);
-
-  // Compartment Customization
+  // Cabin Customization
   const [customization, setCustomization] = useState<CompartmentCustomization>({
-    woodFinish: 'vintage_mahogany',
-    upholstery: 'crimson_velvet',
-    windowFrame: 'polished_brass',
-    curtainColor: 'burgundy',
-    tableTrinket: 'earl_grey',
-    ambientLightWarmth: 0.85,
-    curtainsOpen: true,
+    woodStyle: 'warm_oak',
+    seatColor: 'emerald_velvet',
+    tableTrinket: 'hot_coffee',
+    curtainStyle: 'open',
   });
 
-  // Weather & Atmosphere
-  const [weather, setWeather] = useState<WeatherType>('clear_day');
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('afternoon');
-  const [realTimeSync, setRealTimeSync] = useState<boolean>(true);
-  const [wipersActive, setWipersActive] = useState<boolean>(false);
+  // Scheduled Signal Post Milestone State (Side Feature)
+  const [signalPostAvailable, setSignalPostAvailable] = useState<boolean>(false);
+  const distanceSinceLastSignalRef = useRef<number>(0);
 
-  // Landmark toast alert
-  const [landmarkToast, setLandmarkToast] = useState<string | null>(null);
-
-  // Tea sip feedback
-  const [sipFeedback, setSipFeedback] = useState<boolean>(false);
+  // Active Microgame (on-demand or milestone accepted)
+  const [activeMicrogame, setActiveMicrogame] = useState<MicrogameInstance | null>(null);
+  const [isPlayingMicrogame, setIsPlayingMicrogame] = useState<boolean>(false);
 
   // Modals
-  const [isChallengesOpen, setIsChallengesOpen] = useState<boolean>(false);
   const [isStationArrivalOpen, setIsStationArrivalOpen] = useState<boolean>(false);
   const [isUpgradeShopOpen, setIsUpgradeShopOpen] = useState<boolean>(false);
-  const [isWeatherControlsOpen, setIsWeatherControlsOpen] = useState<boolean>(false);
 
-  // Compute maximum engine speed based on upgrades
-  const maxSpeedKmH = 90 + upgrades.engineLevel * 25 + (upgrades.aerodynamicCowling ? 15 : 0);
+  // Current passenger aboard
+  const [currentPassenger, setCurrentPassenger] = useState<Passenger>(COZY_PASSENGERS[0]);
 
-  // Handle Real-Time Clock Sync
+  // Train Speed
+  const maxSpeedKmH = 90 + upgrades.maxSpeedLevel * 25;
+  const [speedKmH, setSpeedKmH] = useState<number>(85);
+
+  // Start Background Chillhop automatically on first user click anywhere
   useEffect(() => {
-    if (!realTimeSync) return;
-
-    const syncClock = () => {
-      const hour = new Date().getHours();
-      if (hour >= 5 && hour < 11) {
-        setTimeOfDay('morning');
-      } else if (hour >= 11 && hour < 17) {
-        setTimeOfDay('afternoon');
-      } else if (hour >= 17 && hour < 20) {
-        setTimeOfDay('sunset');
-      } else if (hour >= 20 && hour < 22) {
-        setTimeOfDay('twilight');
-      } else {
-        setTimeOfDay('night');
+    const handleFirstInteraction = () => {
+      if (!audioEngine.getIsBgmPlaying()) {
+        audioEngine.playBgm();
       }
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
     };
+    window.addEventListener('click', handleFirstInteraction);
+    window.addEventListener('keydown', handleFirstInteraction);
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, []);
 
-    syncClock();
-    const timer = setInterval(syncClock, 60000);
-    return () => clearInterval(timer);
-  }, [realTimeSync]);
-
-  // Main Simulation Tick (Distance traveled, fuel burn, speed dynamics)
+  // Main Scenic Train Physics & Distance Loop
   useEffect(() => {
-    const tickInterval = 200; // ms
+    const tickInterval = 250; // ms
     const dt = tickInterval / 1000;
 
     const interval = setInterval(() => {
-      // If at station, speed is zero
-      if (isStationArrivalOpen) {
-        setSpeedKmH(0);
-        audioEngine.updateRailSpeed(0);
-        return;
+      if (isStationArrivalOpen) return;
+
+      // Distance advancement: distance = speed * dt
+      const kmPerSec = (speedKmH * speedMultiplier) / 3600;
+      const kmTraveled = kmPerSec * dt * 8; // slight arcade progression scaling
+
+      distanceSinceLastSignalRef.current += kmTraveled;
+
+      // Every ~4.5 km of scenic travel, a railway signal post milestone appears!
+      if (
+        distanceSinceLastSignalRef.current >= 4.5 &&
+        !signalPostAvailable &&
+        !isPlayingMicrogame
+      ) {
+        distanceSinceLastSignalRef.current = 0;
+        setSignalPostAvailable(true);
+        audioEngine.playSignalAlert();
       }
 
-      // Calculate Target Speed
-      setSpeedKmH((prevSpeed) => {
-        let baseCruise = 70 + upgrades.engineLevel * 18;
-        if (upgrades.aerodynamicCowling) baseCruise += 12;
-
-        // Out of fuel penalty: slows down to emergency coast
-        if (fuel <= 0) {
-          baseCruise = 12;
-        }
-
-        // Boost active
-        if (speedBoostDuration > 0) {
-          baseCruise = maxSpeedKmH;
-          setSpeedBoostDuration((b) => Math.max(0, b - dt));
-        }
-
-        // Smooth acceleration / deceleration toward cruise
-        const diff = baseCruise - prevSpeed;
-        const newSpeed = Math.max(0, prevSpeed + diff * 0.1);
-
-        audioEngine.updateRailSpeed(newSpeed);
-        return newSpeed;
-      });
-
-      // Fuel consumption
-      setFuel((prevFuel) => {
-        if (prevFuel <= 0) return 0;
-        const baseBurn = 0.04;
-        const speedFactor = speedKmH / 100;
-        const efficiencyDiscount = 1 - (upgrades.fuelEfficiencyLevel * 0.12);
-        const burnRate = baseBurn * speedFactor * efficiencyDiscount * dt;
-        return Math.max(0, prevFuel - burnRate);
-      });
-
-      // Distance advancement: distance = speed * time
-      // speedKmH * (dt / 3600)
-      const kmTraveled = (speedKmH / 3600) * dt * 8; // Slight acceleration for fun arcade progression
       setDistanceToNextKm((prevDist) => {
         const nextDist = prevDist - kmTraveled;
         if (nextDist <= 0) {
-          // Reached Station!
           triggerStationArrival();
           return 0;
         }
         return nextDist;
       });
-
     }, tickInterval);
 
     return () => clearInterval(interval);
   }, [
     isStationArrivalOpen,
     speedKmH,
-    fuel,
-    speedBoostDuration,
-    maxSpeedKmH,
-    upgrades,
+    speedMultiplier,
+    signalPostAvailable,
+    isPlayingMicrogame,
   ]);
 
   // Trigger Station Arrival
-  const triggerStationArrival = useCallback(() => {
-    audioEngine.playStationBell();
+  const triggerStationArrival = () => {
+    audioEngine.playStationArrival();
+    setSignalPostAvailable(false);
+    setIsPlayingMicrogame(false);
+    setActiveMicrogame(null);
+    setHearts(maxHearts); // Station refills all lives!
+    setCoins((c) => c + nextStation.rewardCoins);
 
-    // Settle arriving passengers
-    const disembarking = passengers.filter(
-      (p) => p.destinationStationId === nextStation.id || Math.random() < 0.6
-    );
-
-    const comfortMultiplier = 1 + upgrades.comfortRating * 0.25;
-    const totalEarned = disembarking.reduce(
-      (acc, p) => acc + Math.round((p.farePaid + p.tipPaid) * comfortMultiplier),
-      0
-    );
-
-    // Generate 2 new passengers
-    const newBoarders: Passenger[] = [0, 1].map((idx) => {
-      const template = PASSENGER_TEMPLATES[(stationIndex + idx) % PASSENGER_TEMPLATES.length];
-      const futureStation = STATIONS[(stationIndex + 2) % STATIONS.length];
-      return {
-        id: `pass_${Date.now()}_${idx}`,
-        name: `${template.role} ${['Valerie', 'Julian', 'Amara', 'Bartholomew'][Math.floor(Math.random() * 4)]}`,
-        role: template.role,
-        avatar: template.avatar,
-        destinationStationId: futureStation.id,
-        farePaid: Math.round(40 + Math.random() * 30),
-        tipPaid: Math.round(15 + Math.random() * 20),
-        dialogue: template.dialogues[Math.floor(Math.random() * template.dialogues.length)],
-        luggage: template.luggage,
-      };
-    });
-
-    setArrivedPassengers(disembarking);
-    setBoardingPassengers(newBoarders);
-    setArrivalEarnings(totalEarned);
-    setCoins((c) => c + totalEarned);
+    const randomPassenger = COZY_PASSENGERS[(stationIndex + 1) % COZY_PASSENGERS.length];
+    setCurrentPassenger(randomPassenger);
 
     setIsStationArrivalOpen(true);
-  }, [passengers, nextStation, upgrades.comfortRating, stationIndex]);
+  };
 
-  // Depart Station & Transition Route
+  // Depart Station
   const handleDepartStation = () => {
     setIsStationArrivalOpen(false);
-
-    // Advance station
-    const nextIdx = (stationIndex + 1) % STATIONS.length;
+    const nextIdx = (stationIndex + 1) % MODERN_STATIONS.length;
     setStationIndex(nextIdx);
-
-    const upcomingStation = STATIONS[(nextIdx + 1) % STATIONS.length];
-    setDistanceToNextKm(upcomingStation.distanceKm);
-
-    // Update active passengers
-    const remaining = passengers.filter(
-      (p) => !arrivedPassengers.some((arr) => arr.id === p.id)
-    );
-    setPassengers([...remaining, ...boardingPassengers]);
-
-    // Transition scenic biome to match upcoming landscape
-    setCurrentBiome(STATIONS[nextIdx].biome);
-
-    // Initial departure speed
-    setSpeedKmH(45);
-    audioEngine.startRailLoop(45);
+    setDistanceToNextKm(MODERN_STATIONS[(nextIdx + 1) % MODERN_STATIONS.length].distanceKm);
+    distanceSinceLastSignalRef.current = 0;
   };
 
-  // Complete a conductor challenge
-  const handleCompleteChallenge = (ch: Challenge, bonusDistanceKm: number) => {
-    setConductorPoints((pts) => pts + ch.rewardPoints);
-    setCoins((c) => c + ch.rewardCoins);
-
-    // Immediate forward station jump & high speed overdrive
-    setDistanceToNextKm((dist) => Math.max(0.2, dist - bonusDistanceKm));
-    setSpeedBoostDuration(15); // 15 seconds of max turbo speed!
-    setSpeedKmH(maxSpeedKmH);
-
-    // Reward sound
-    audioEngine.playWhistle();
+  // Accept Signal Milestone Challenge
+  const handleAcceptSignalChallenge = () => {
+    setSignalPostAvailable(false);
+    const newChallenge = generateProceduralMicrogame(roundNumber);
+    setActiveMicrogame(newChallenge);
+    setIsPlayingMicrogame(true);
   };
 
-  // Steam whistle button click
+  // Dismiss Signal Post
+  const handleDismissSignalPost = () => {
+    setSignalPostAvailable(false);
+  };
+
+  // Request Manual Challenge from Console anytime
+  const handleRequestManualChallenge = () => {
+    const newChallenge = generateProceduralMicrogame(roundNumber);
+    setActiveMicrogame(newChallenge);
+    setIsPlayingMicrogame(true);
+  };
+
+  // Microgame Win Handler
+  const handleMicrogameSuccess = (pointsEarned: number) => {
+    const bentoBonus = upgrades.bentoBoxLevel * 15;
+    const earnedCoins = 30 + bentoBonus;
+    setScore((s) => s + pointsEarned);
+    setCoins((c) => c + earnedCoins);
+    setRoundNumber((r) => r + 1);
+
+    // Minor health recovery reward on success
+    setHearts((h) => Math.min(maxHearts, h + 1));
+
+    // High speed forward boost toward upcoming station!
+    setDistanceToNextKm((prev) => Math.max(0.5, prev - 3.0));
+
+    setIsPlayingMicrogame(false);
+    setActiveMicrogame(null);
+  };
+
+  // Microgame Failure Handler
+  const handleMicrogameFailure = () => {
+    setHearts((prev) => Math.max(1, prev - 1));
+    setIsPlayingMicrogame(false);
+    setActiveMicrogame(null);
+  };
+
+  // Whistle Chime
   const handleWhistleClick = () => {
     audioEngine.playWhistle();
-    // Whistling gives a little blast of steam boost
-    setSpeedKmH((s) => Math.min(maxSpeedKmH, s + 10));
   };
 
-  // Refuel boiler
-  const handleRefuel = () => {
-    if (fuel >= maxFuel) return;
-    const cost = 15;
-    if (coins >= cost) {
-      setCoins((c) => c - cost);
-      setFuel(maxFuel);
-      audioEngine.playCoin();
-    }
-  };
-
-  // Purchase upgrade in shop
-  const handleBuyUpgrade = (
-    type: 'engine' | 'fuelEfficiency' | 'comfort' | 'wipers' | 'aerodynamics',
-    cost: number
-  ) => {
+  // Upgrades purchases
+  const handleBuySpeed = (cost: number) => {
     if (coins < cost) return;
     setCoins((c) => c - cost);
-
-    setUpgrades((prev) => {
-      if (type === 'engine') return { ...prev, engineLevel: prev.engineLevel + 1 };
-      if (type === 'fuelEfficiency') return { ...prev, fuelEfficiencyLevel: prev.fuelEfficiencyLevel + 1 };
-      if (type === 'comfort') return { ...prev, comfortRating: prev.comfortRating + 1 };
-      if (type === 'wipers') return { ...prev, wiperSystem: true };
-      if (type === 'aerodynamics') return { ...prev, aerodynamicCowling: true };
-      return prev;
-    });
+    setUpgrades((u) => ({ ...u, maxSpeedLevel: u.maxSpeedLevel + 1 }));
+    setSpeedKmH((s) => s + 15);
   };
 
-  // Update compartment customizations
-  const handleUpdateCustomization = (custom: Partial<CompartmentCustomization>) => {
-    setCustomization((prev) => ({ ...prev, ...custom }));
+  const handleBuyBento = (cost: number) => {
+    if (coins < cost) return;
+    setCoins((c) => c - cost);
+    setUpgrades((u) => ({ ...u, bentoBoxLevel: u.bentoBoxLevel + 1 }));
   };
 
-  // Take a sip of tea
-  const handleTakeSip = () => {
-    setSipFeedback(true);
-    setTimeout(() => setSipFeedback(false), 2200);
-  };
-
-  // Landmark alert handler
-  const handleLandmarkSpotted = (landmarkName: string) => {
-    setLandmarkToast(landmarkName);
-    setTimeout(() => setLandmarkToast(null), 6000);
+  const handleBuyExtraHeart = (cost: number) => {
+    if (coins < cost) return;
+    setCoins((c) => c - cost);
+    setUpgrades((u) => ({ ...u, extraHeartUnlocked: true }));
+    setHearts(4);
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black select-none font-sans">
+    <div className="relative w-screen h-screen overflow-hidden bg-[#f8f7f4] select-none font-sans-inter text-[#1c1917]">
       
-      {/* 1. SCENIC MOVING TRAIN WINDOW BACKGROUND (PARALLAX + WEATHER + BIOMES) */}
+      {/* 1. PANORAMIC OBSERVATION SCENERY CANVAS */}
       <TrainWindowCanvas
-        speedKmH={speedKmH}
-        biome={currentBiome}
-        weather={weather}
-        timeOfDay={timeOfDay}
-        wipersActive={wipersActive || upgrades.wiperSystem}
-        onLandmarkSpotted={handleLandmarkSpotted}
+        speedKmH={speedKmH * speedMultiplier}
+        tunnelActive={activeMicrogame?.category === 'duck_tunnel'}
       />
 
-      {/* 2. THE LUXURY TRAIN COMPARTMENT INTERIOR FRAME & CONTROLS */}
+      {/* 2. MODERN SLEEK GLASSMORPHIC OBSERVATION SALON COMPARTMENT */}
       <CompartmentInterior
         customization={customization}
-        speedKmH={speedKmH}
+        speedKmH={speedKmH * speedMultiplier}
         maxSpeedKmH={maxSpeedKmH}
-        fuel={fuel}
-        maxFuel={maxFuel}
         currentStation={currentStation}
         nextStation={nextStation}
         distanceToNextKm={distanceToNextKm}
         coins={coins}
-        conductorPoints={conductorPoints}
-        passengersCount={passengers.length}
-        weather={weather}
-        timeOfDay={timeOfDay}
+        score={score}
         onWhistleClick={handleWhistleClick}
-        onOpenChallenges={() => setIsChallengesOpen(true)}
-        onOpenDepotUpgrades={() => setIsUpgradeShopOpen(true)}
-        onOpenWeatherControls={() => setIsWeatherControlsOpen(true)}
-        onRefuel={handleRefuel}
-        onToggleCurtains={() =>
-          setCustomization((prev) => ({ ...prev, curtainsOpen: !prev.curtainsOpen }))
-        }
-        onToggleWipers={() => setWipersActive(!wipersActive)}
-        wipersActive={wipersActive || upgrades.wiperSystem}
-        onTakeSip={handleTakeSip}
-        sipFeedback={sipFeedback}
+        onOpenDepot={() => setIsUpgradeShopOpen(true)}
+        signalPostAvailable={signalPostAvailable}
+        onAcceptSignalChallenge={handleAcceptSignalChallenge}
+        onDismissSignalPost={handleDismissSignalPost}
+        onRequestManualChallenge={handleRequestManualChallenge}
+        isPlayingMicrogame={isPlayingMicrogame}
       />
 
-      {/* 3. LANDMARK SPOTTED NOTIFICATION TOAST */}
-      {landmarkToast && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-40 bg-amber-950/90 border-2 border-amber-400 text-amber-200 px-4 py-2 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.5)] flex items-center gap-2.5 animate-bounce">
-          <span className="text-lg">🔭</span>
-          <div className="text-xs font-serif-vintage">
-            <strong className="text-amber-100 font-bold">Landmark Outside: </strong>
-            {landmarkToast}!
-          </div>
-          <button
-            onClick={() => setIsChallengesOpen(true)}
-            className="text-[10px] bg-amber-500 text-stone-950 px-2 py-0.5 rounded font-bold uppercase hover:bg-amber-400"
-          >
-            Snap Photo
-          </button>
-        </div>
+      {/* 3. SIGNAL POST PROCEDURAL MICROGAME MODAL (OVER 100+ PROCEDURAL VARIANTS) */}
+      {isPlayingMicrogame && activeMicrogame && (
+        <MicrogameOverlay
+          key={activeMicrogame.id}
+          microgame={activeMicrogame}
+          speedMultiplier={speedMultiplier}
+          onSuccess={handleMicrogameSuccess}
+          onFailure={handleMicrogameFailure}
+          onDismiss={() => {
+            setIsPlayingMicrogame(false);
+            setActiveMicrogame(null);
+          }}
+          hearts={hearts}
+          maxHearts={maxHearts}
+          roundNumber={roundNumber}
+        />
       )}
 
-      {/* 4. MODALS */}
-
-      {/* Conductor Challenges Clipboard Modal */}
-      <ConductorChallengesModal
-        isOpen={isChallengesOpen}
-        onClose={() => setIsChallengesOpen(false)}
-        onCompleteChallenge={handleCompleteChallenge}
-        currentStationName={currentStation.name}
-        nextStationName={nextStation.name}
-      />
-
-      {/* Station Arrival & Passenger Boarding Modal */}
+      {/* 4. STATION ARRIVAL MODAL */}
       <StationArrivalModal
         isOpen={isStationArrivalOpen}
         station={nextStation}
-        nextStation={STATIONS[(stationIndex + 2) % STATIONS.length]}
-        disembarkingPassengers={arrivedPassengers}
-        newPassengers={boardingPassengers}
-        totalEarnings={arrivalEarnings}
-        fuel={fuel}
-        maxFuel={maxFuel}
-        onRefuel={handleRefuel}
-        onDepartStation={handleDepartStation}
+        nextStation={MODERN_STATIONS[(stationIndex + 2) % MODERN_STATIONS.length]}
+        rewardCoins={nextStation.rewardCoins}
+        newPassenger={currentPassenger}
+        onContinue={handleDepartStation}
       />
 
-      {/* Depot Upgrades & Interior Customization Modal */}
+      {/* 5. MODERN UPGRADES DEPOT MODAL */}
       <UpgradeShopModal
         isOpen={isUpgradeShopOpen}
         onClose={() => setIsUpgradeShopOpen(false)}
         coins={coins}
         upgrades={upgrades}
         customization={customization}
-        onBuyUpgrade={handleBuyUpgrade}
-        onUpdateCustomization={handleUpdateCustomization}
-      />
-
-      {/* Weather & Scenic Atmosphere Controls Modal */}
-      <WeatherControls
-        isOpen={isWeatherControlsOpen}
-        onClose={() => setIsWeatherControlsOpen(false)}
-        weather={weather}
-        timeOfDay={timeOfDay}
-        biome={currentBiome}
-        realTimeSync={realTimeSync}
-        onSetWeather={setWeather}
-        onSetTimeOfDay={setTimeOfDay}
-        onSetBiome={setCurrentBiome}
-        onToggleRealTimeSync={() => setRealTimeSync(!realTimeSync)}
+        onBuySpeed={handleBuySpeed}
+        onBuyBento={handleBuyBento}
+        onBuyExtraHeart={handleBuyExtraHeart}
+        onUpdateCustomization={(c) => setCustomization((prev) => ({ ...prev, ...c }))}
       />
 
     </div>

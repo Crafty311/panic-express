@@ -1,28 +1,74 @@
-class TrainAudioEngine {
+export interface TrackInfo {
+  id: number;
+  title: string;
+  artist: string;
+  durationSec: number;
+  url: string;
+}
+
+// 5 Curated upbeat chillhop & modern lounge audio tracks
+export const CHILLHOP_PLAYLIST: TrackInfo[] = [
+  {
+    id: 1,
+    title: 'Velvet Rails',
+    artist: 'Chillhop Express',
+    durationSec: 60,
+    // Free high-quality royalty-free chill tracks
+    url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
+  },
+  {
+    id: 2,
+    title: 'Midnight Panorama',
+    artist: 'Lounge Horizon',
+    durationSec: 60,
+    url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=lofi-chill-medium-version-159456.mp3',
+  },
+  {
+    id: 3,
+    title: 'Neon Signal Lights',
+    artist: 'Metropolitan Drift',
+    durationSec: 60,
+    url: 'https://cdn.pixabay.com/download/audio/2023/07/04/audio_34b7f94119.mp3?filename=chillhop-beat-154944.mp3',
+  },
+  {
+    id: 4,
+    title: 'Golden Hour Viaduct',
+    artist: 'Acoustic Solitude',
+    durationSec: 60,
+    url: 'https://cdn.pixabay.com/download/audio/2022/11/06/audio_c9e8a71932.mp3?filename=lofi-orchestra-16230.mp3',
+  },
+  {
+    id: 5,
+    title: 'Starlight Observation',
+    artist: 'Nightline Beats',
+    durationSec: 60,
+    url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73514.mp3?filename=lofi-vintage-110034.mp3',
+  },
+];
+
+class ModernTrainAudioEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
   private masterGain: GainNode | null = null;
-  
-  // Ambient track state
-  private radioGain: GainNode | null = null;
-  private radioInterval: number | null = null;
-  private radioPlaying: boolean = false;
-  private currentRadioTrack: number = 0; // 0 = Lofi Voyage, 1 = Rain Reverie, 2 = Midnight Express
 
-  // Rail clack engine
-  private railClackTimeout: number | null = null;
-  private isRailAudioActive: boolean = false;
+  // BGM Online Player state
+  private currentAudioEl: HTMLAudioElement | null = null;
+  private currentTrackIndex: number = 0;
+  private isPlayingBgm: boolean = false;
+  private trackTimerInterval: number | null = null;
+  private trackElapsedSeconds: number = 0;
+  private onTrackChangeCallback: ((track: TrackInfo, elapsed: number) => void) | null = null;
 
-  // Rain noise node
-  private rainGainNode: GainNode | null = null;
-  private rainSourceNode: AudioNode | null = null;
+  // Synthesized fallback engine state
+  private synthInterval: number | null = null;
+  private isUsingSynthFallback: boolean = false;
 
   public init() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = 0.6;
+      this.masterGain.gain.value = 0.55;
       this.masterGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') {
@@ -33,7 +79,10 @@ class TrainAudioEngine {
   public setMuted(muted: boolean) {
     this.isMuted = muted;
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setValueAtTime(muted ? 0 : 0.6, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(muted ? 0 : 0.55, this.ctx.currentTime);
+    }
+    if (this.currentAudioEl) {
+      this.currentAudioEl.muted = muted;
     }
   }
 
@@ -42,49 +91,194 @@ class TrainAudioEngine {
   }
 
   public setVolume(vol: number) {
+    const clamped = Math.max(0, Math.min(1, vol));
     if (this.masterGain && this.ctx && !this.isMuted) {
-      this.masterGain.gain.setValueAtTime(Math.max(0, Math.min(1, vol)), this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(clamped, this.ctx.currentTime);
+    }
+    if (this.currentAudioEl && !this.isMuted) {
+      this.currentAudioEl.volume = clamped;
     }
   }
 
-  // Play realistic train steam whistle
-  public playWhistle() {
-    this.init();
-    if (!this.ctx || !this.masterGain || this.isMuted) return;
-
-    const now = this.ctx.currentTime;
-    const tones = [587.33, 739.99, 880.0]; // D5, F#5, A5 classic chord
-
-    tones.forEach((freq) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-      const filter = this.ctx!.createBiquadFilter();
-
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1400, now);
-
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(freq, now);
-      // Slight pitch bend for steam pressure realism
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.03, now + 0.2);
-      osc.frequency.exponentialRampToValueAtTime(freq * 0.98, now + 1.2);
-
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.08, now + 0.15);
-      gain.gain.setValueAtTime(0.08, now + 1.0);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
-
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.masterGain!);
-
-      osc.start(now);
-      osc.stop(now + 1.6);
-    });
+  public onTrackUpdate(cb: (track: TrackInfo, elapsed: number) => void) {
+    this.onTrackChangeCallback = cb;
   }
 
-  // Station arrival bell
-  public playStationBell() {
+  public getCurrentTrack(): TrackInfo {
+    return CHILLHOP_PLAYLIST[this.currentTrackIndex % CHILLHOP_PLAYLIST.length];
+  }
+
+  public getTrackElapsed(): number {
+    return this.trackElapsedSeconds;
+  }
+
+  public getIsBgmPlaying(): boolean {
+    return this.isPlayingBgm;
+  }
+
+  // Toggle Background Chillhop Music
+  public toggleBgm(): boolean {
+    this.init();
+    if (this.isPlayingBgm) {
+      this.pauseBgm();
+    } else {
+      this.playBgm();
+    }
+    return this.isPlayingBgm;
+  }
+
+  public playBgm() {
+    this.init();
+    this.isPlayingBgm = true;
+    this.loadAndPlayCurrentTrack();
+    this.startTrackProgressTimer();
+  }
+
+  public pauseBgm() {
+    this.isPlayingBgm = false;
+    if (this.currentAudioEl) {
+      this.currentAudioEl.pause();
+    }
+    this.stopSynthFallback();
+    if (this.trackTimerInterval) {
+      clearInterval(this.trackTimerInterval);
+      this.trackTimerInterval = null;
+    }
+    this.notifyUpdate();
+  }
+
+  public skipToNextTrack() {
+    this.currentTrackIndex = (this.currentTrackIndex + 1) % CHILLHOP_PLAYLIST.length;
+    this.trackElapsedSeconds = 0;
+    if (this.isPlayingBgm) {
+      this.loadAndPlayCurrentTrack();
+    } else {
+      this.notifyUpdate();
+    }
+  }
+
+  public skipToPrevTrack() {
+    this.currentTrackIndex = (this.currentTrackIndex - 1 + CHILLHOP_PLAYLIST.length) % CHILLHOP_PLAYLIST.length;
+    this.trackElapsedSeconds = 0;
+    if (this.isPlayingBgm) {
+      this.loadAndPlayCurrentTrack();
+    } else {
+      this.notifyUpdate();
+    }
+  }
+
+  private loadAndPlayCurrentTrack() {
+    const track = this.getCurrentTrack();
+
+    if (!this.currentAudioEl) {
+      this.currentAudioEl = new Audio();
+      this.currentAudioEl.crossOrigin = 'anonymous';
+      this.currentAudioEl.preload = 'auto';
+    }
+
+    this.currentAudioEl.src = track.url;
+    this.currentAudioEl.muted = this.isMuted;
+    this.currentAudioEl.volume = 0.55;
+
+    const playPromise = this.currentAudioEl.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          this.isUsingSynthFallback = false;
+          this.stopSynthFallback();
+        })
+        .catch(() => {
+          // If network / policy blocks external streaming audio, seamlessly fallback to procedural synthesized chillhop!
+          this.startSynthFallback();
+        });
+    }
+
+    this.notifyUpdate();
+  }
+
+  private startTrackProgressTimer() {
+    if (this.trackTimerInterval) clearInterval(this.trackTimerInterval);
+
+    this.trackTimerInterval = window.setInterval(() => {
+      if (!this.isPlayingBgm) return;
+
+      this.trackElapsedSeconds += 1;
+      this.notifyUpdate();
+
+      // Exactly 60 seconds (1 minute) per track as requested!
+      if (this.trackElapsedSeconds >= 60) {
+        this.trackElapsedSeconds = 0;
+        this.currentTrackIndex = (this.currentTrackIndex + 1) % CHILLHOP_PLAYLIST.length;
+        this.loadAndPlayCurrentTrack();
+      }
+    }, 1000);
+  }
+
+  private notifyUpdate() {
+    if (this.onTrackChangeCallback) {
+      this.onTrackChangeCallback(this.getCurrentTrack(), this.trackElapsedSeconds);
+    }
+  }
+
+  // Synthesized Chillhop Fallback (Guaranteed to work in all browser sandbox environments)
+  private startSynthFallback() {
+    if (this.synthInterval || !this.ctx || !this.masterGain) return;
+    this.isUsingSynthFallback = true;
+
+    // Upbeat modern lounge chord cycles (Fmaj7 - Em7 - Dm7 - Cmaj7)
+    const chords = [
+      [174.61, 220.0, 261.63, 329.63], // Fmaj7
+      [164.81, 196.0, 246.94, 293.66], // Em7
+      [146.83, 174.61, 220.0, 261.63], // Dm7
+      [130.81, 164.81, 196.0, 246.94], // Cmaj7
+    ];
+
+    let chordIdx = 0;
+    const playChordStep = () => {
+      if (!this.ctx || !this.masterGain || !this.isPlayingBgm) return;
+      const notes = chords[chordIdx % chords.length];
+      chordIdx++;
+
+      const now = this.ctx.currentTime;
+      notes.forEach((freq) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        const filter = this.ctx!.createBiquadFilter();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(750, now);
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.04, now + 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 3.2);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain!);
+
+        osc.start(now);
+        osc.stop(now + 3.2);
+      });
+    };
+
+    playChordStep();
+    this.synthInterval = window.setInterval(playChordStep, 3500);
+  }
+
+  private stopSynthFallback() {
+    if (this.synthInterval) {
+      clearInterval(this.synthInterval);
+      this.synthInterval = null;
+    }
+  }
+
+  // SOUND EFFECTS
+
+  // Microgame timer tick
+  public playTimerTick(urgency: number = 0.5) {
     this.init();
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
@@ -92,47 +286,21 @@ class TrainAudioEngine {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(987.77, now); // B5
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(600 + urgency * 350, now);
 
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.2, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     osc.connect(gain);
     gain.connect(this.masterGain);
 
     osc.start(now);
-    osc.stop(now + 1.8);
+    osc.stop(now + 0.05);
   }
 
-  // Coin clink / cash reward
-  public playCoin() {
-    this.init();
-    if (!this.ctx || !this.masterGain || this.isMuted) return;
-
-    const now = this.ctx.currentTime;
-    [1567.98, 2093.0].forEach((freq, i) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, now + i * 0.08);
-
-      gain.gain.setValueAtTime(0, now + i * 0.08);
-      gain.gain.linearRampToValueAtTime(0.15, now + i * 0.08 + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.08 + 0.4);
-
-      osc.connect(gain);
-      gain.connect(this.masterGain!);
-
-      osc.start(now + i * 0.08);
-      osc.stop(now + i * 0.08 + 0.4);
-    });
-  }
-
-  // Challenge success sound
-  public playSuccess() {
+  // Microgame Win
+  public playWin() {
     this.init();
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
@@ -143,266 +311,141 @@ class TrainAudioEngine {
       const gain = this.ctx!.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+      osc.frequency.setValueAtTime(freq, now + idx * 0.07);
 
-      gain.gain.setValueAtTime(0, now + idx * 0.09);
-      gain.gain.linearRampToValueAtTime(0.12, now + idx * 0.09 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.09 + 0.5);
+      gain.gain.setValueAtTime(0, now + idx * 0.07);
+      gain.gain.linearRampToValueAtTime(0.14, now + idx * 0.07 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.07 + 0.35);
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
 
-      osc.start(now + idx * 0.09);
-      osc.stop(now + idx * 0.09 + 0.5);
+      osc.start(now + idx * 0.07);
+      osc.stop(now + idx * 0.07 + 0.38);
     });
   }
 
-  // Clickety-clack of the railway tracks based on train speed
-  public startRailLoop(speedKmH: number) {
-    this.isRailAudioActive = true;
-    this.scheduleNextRailClack(speedKmH);
-  }
-
-  public updateRailSpeed(speedKmH: number) {
-    if (speedKmH <= 5) {
-      if (this.railClackTimeout) {
-        clearTimeout(this.railClackTimeout);
-        this.railClackTimeout = null;
-      }
-      return;
-    }
-    if (!this.railClackTimeout && this.isRailAudioActive) {
-      this.scheduleNextRailClack(speedKmH);
-    }
-  }
-
-  public stopRailLoop() {
-    this.isRailAudioActive = false;
-    if (this.railClackTimeout) {
-      clearTimeout(this.railClackTimeout);
-      this.railClackTimeout = null;
-    }
-  }
-
-  private scheduleNextRailClack(speedKmH: number) {
-    if (!this.isRailAudioActive) return;
-
-    // Interval between joint hits shrinks with higher speed
-    // e.g. at 120 km/h -> interval ~ 550ms; at 40 km/h -> interval ~ 1400ms
-    const interval = Math.max(300, Math.min(2200, 48000 / Math.max(15, speedKmH)));
-
-    this.playRailClickClackSound();
-
-    this.railClackTimeout = window.setTimeout(() => {
-      this.scheduleNextRailClack(speedKmH);
-    }, interval);
-  }
-
-  private playRailClickClackSound() {
+  // Microgame Fail (Clean modern acoustic fail)
+  public playFail() {
+    this.init();
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const now = this.ctx.currentTime;
-    // Double tap rhythm "clack-clack"
-    const hits = [0, 0.08];
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
 
-    hits.forEach((offset, idx) => {
-      // Low thud
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(260, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.32);
+  }
+
+  // Signal post chime alert
+  public playSignalAlert() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+
+    const now = this.ctx.currentTime;
+    [659.25, 880.0].forEach((freq, i) => {
       const osc = this.ctx!.createOscillator();
-      const oscGain = this.ctx!.createGain();
+      const gain = this.ctx!.createGain();
+
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(idx === 0 ? 82 : 75, now + offset);
-      osc.frequency.exponentialRampToValueAtTime(35, now + offset + 0.07);
+      osc.frequency.setValueAtTime(freq, now + i * 0.1);
 
-      oscGain.gain.setValueAtTime(0.06, now + offset);
-      oscGain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.07);
+      gain.gain.setValueAtTime(0, now + i * 0.1);
+      gain.gain.linearRampToValueAtTime(0.12, now + i * 0.1 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.1 + 0.4);
 
-      osc.connect(oscGain);
-      oscGain.connect(this.masterGain!);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
 
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.08);
-
-      // Metal clack noise burst
-      const bufferSize = this.ctx!.sampleRate * 0.04;
-      const noiseBuffer = this.ctx!.createBuffer(1, bufferSize, this.ctx!.sampleRate);
-      const data = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
-      }
-
-      const noise = this.ctx!.createBufferSource();
-      noise.buffer = noiseBuffer;
-
-      const filter = this.ctx!.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.value = idx === 0 ? 420 : 380;
-      filter.Q.value = 3.5;
-
-      const noiseGain = this.ctx!.createGain();
-      noiseGain.gain.setValueAtTime(0.04, now + offset);
-      noiseGain.gain.exponentialRampToValueAtTime(0.0005, now + offset + 0.04);
-
-      noise.connect(filter);
-      filter.connect(noiseGain);
-      noiseGain.connect(this.masterGain!);
-
-      noise.start(now + offset);
-      noise.stop(now + offset + 0.05);
+      osc.start(now + i * 0.1);
+      osc.stop(now + i * 0.1 + 0.42);
     });
   }
 
-  // Dynamic rain ambient audio
-  public updateRainAmbience(isRaining: boolean, intensity: number = 0.5) {
+  // Train whistle
+  public playWhistle() {
     this.init();
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
 
-    if (!isRaining) {
-      if (this.rainGainNode) {
-        this.rainGainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
-      }
-      return;
-    }
-
-    if (!this.rainGainNode) {
-      const bufferSize = this.ctx.sampleRate * 2;
-      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      // Pink/Brownish noise for rain
-      let b0 = 0, b1 = 0, b2 = 0;
-      for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.99886 * b0 + white * 0.0555179;
-        b1 = 0.99332 * b1 + white * 0.0750759;
-        b2 = 0.96900 * b2 + white * 0.1538520;
-        data[i] = (b0 + b1 + b2) * 0.18;
-      }
-
-      const source = this.ctx.createBufferSource();
-      source.buffer = buffer;
-      source.loop = true;
-
-      const filter = this.ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 1100;
-
-      this.rainGainNode = this.ctx.createGain();
-      this.rainGainNode.gain.setValueAtTime(0, this.ctx.currentTime);
-
-      source.connect(filter);
-      filter.connect(this.rainGainNode);
-      this.rainGainNode.connect(this.masterGain);
-
-      source.start();
-      this.rainSourceNode = source;
-    }
-
-    const targetGain = this.isMuted ? 0 : Math.min(0.22, intensity * 0.2);
-    this.rainGainNode.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.4);
-  }
-
-  // Compartment Radio Player (Procedural Cozy Lo-fi chords)
-  public toggleRadio(): boolean {
-    this.init();
-    this.radioPlaying = !this.radioPlaying;
-
-    if (this.radioPlaying) {
-      this.startLofiRadio();
-    } else {
-      this.stopLofiRadio();
-    }
-    return this.radioPlaying;
-  }
-
-  public setRadioTrack(trackIdx: number) {
-    this.currentRadioTrack = trackIdx;
-    if (this.radioPlaying) {
-      this.stopLofiRadio();
-      this.startLofiRadio();
-    }
-  }
-
-  public getRadioPlaying(): boolean {
-    return this.radioPlaying;
-  }
-
-  private startLofiRadio() {
-    if (!this.ctx || !this.masterGain) return;
-
-    if (!this.radioGain) {
-      this.radioGain = this.ctx.createGain();
-      this.radioGain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-      this.radioGain.connect(this.masterGain);
-    }
-
-    const chordSets = [
-      // Track 0: Lo-fi Steam Chords (Ebmaj7 - Gm7 - Fm7 - Bb7)
-      [
-        [155.56, 196.00, 233.08, 293.66], // Ebmaj7
-        [196.00, 233.08, 293.66, 349.23], // Gm7
-        [174.61, 207.65, 261.63, 311.13], // Fm7
-        [233.08, 293.66, 349.23, 415.30], // Bb7
-      ],
-      // Track 1: Rain Reverie (Fmaj9 - Am7 - Dm9 - Cmaj7)
-      [
-        [174.61, 220.00, 261.63, 329.63, 392.00],
-        [220.00, 261.63, 329.63, 392.00],
-        [146.83, 174.61, 220.00, 261.63, 329.63],
-        [130.81, 164.81, 196.00, 246.94],
-      ],
-      // Track 2: Midnight Pullman (Dbmaj7 - Gbmaj7 - Bbm7 - Ab6)
-      [
-        [138.59, 174.61, 207.65, 261.63],
-        [185.00, 233.08, 277.18, 349.23],
-        [233.08, 277.18, 349.23, 415.30],
-        [207.65, 261.63, 311.13, 369.99],
-      ]
-    ];
-
-    let chordStep = 0;
-    const playCurrentChord = () => {
-      if (!this.ctx || !this.radioGain || !this.radioPlaying) return;
-      const chords = chordSets[this.currentRadioTrack % chordSets.length];
-      const chord = chords[chordStep % chords.length];
-      chordStep++;
-
-      const now = this.ctx.currentTime;
-      const duration = 3.6;
-
-      chord.forEach((freq) => {
+    const now = this.ctx.currentTime;
+    [0, 0.2].forEach((offset) => {
+      [587.33, 739.99].forEach((freq) => {
         const osc = this.ctx!.createOscillator();
         const gain = this.ctx!.createGain();
-        const filter = this.ctx!.createBiquadFilter();
 
-        // Warm tape electric piano vibe
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, now);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + offset);
 
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(750, now);
+        gain.gain.setValueAtTime(0, now + offset);
+        gain.gain.linearRampToValueAtTime(0.1, now + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
 
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.04, now + 0.15);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        osc.connect(gain);
+        gain.connect(this.masterGain!);
 
-        osc.connect(filter);
-        filter.connect(gain);
-        gain.connect(this.radioGain!);
-
-        osc.start(now);
-        osc.stop(now + duration);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.18);
       });
-    };
-
-    playCurrentChord();
-    this.radioInterval = window.setInterval(playCurrentChord, 3800);
+    });
   }
 
-  private stopLofiRadio() {
-    if (this.radioInterval) {
-      clearInterval(this.radioInterval);
-      this.radioInterval = null;
-    }
+  // Station arrival
+  public playStationArrival() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+
+    const now = this.ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+
+      gain.gain.setValueAtTime(0.1, now + idx * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 1.2);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 1.2);
+    });
+  }
+
+  // Tap sound
+  public playPop() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(750, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.06);
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.07);
   }
 }
 
-export const audioEngine = new TrainAudioEngine();
+export const audioEngine = new ModernTrainAudioEngine();
