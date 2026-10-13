@@ -1,14 +1,11 @@
 import { Station, Passenger } from '../types/game';
 
 export type MicrogameCategory = 
-  | 'track_switch'
-  | 'stamp_ticket'
-  | 'duck_tunnel'
-  | 'balance_coffee'
-  | 'wipe_splat'
-  | 'catch_item'
-  | 'wake_passenger'
-  | 'feed_furnace';
+  | 'train_tasks'
+  | 'arcade_reflex'
+  | 'puzzle_logic'
+  | 'word_board'
+  | 'rhythm_aim';
 
 export interface MicrogameInstance {
   id: string;
@@ -18,7 +15,6 @@ export interface MicrogameInstance {
   icon: string;
   durationSec: number;
   params: {
-    // Parameter variations
     variantIndex: number;
     subType: string;
     targetValue?: number;
@@ -28,219 +24,196 @@ export interface MicrogameInstance {
     hazardLabel?: string;
     itemEmoji?: string;
     targetColor?: 'red' | 'blue' | 'green' | 'amber';
+    options?: string[];
+    correctOption?: string;
   };
 }
 
-// Procedural generator producing 100+ distinct microgame scenarios!
-export function generateProceduralMicrogame(roundNumber: number): MicrogameInstance {
-  const categories: MicrogameCategory[] = [
-    'track_switch',
-    'stamp_ticket',
-    'duck_tunnel',
-    'balance_coffee',
-    'wipe_splat',
-    'catch_item',
-    'wake_passenger',
-    'feed_furnace',
+// Full comprehensive catalog of 60 unique minigames across 5 categories
+export function getAllMicrogameDefinitions(): MicrogameInstance[] {
+  const games: MicrogameInstance[] = [];
+
+  // 1. Train-Themed Tasks & Travel Quirks (12 games)
+  const trainTasks = [
+    { title: 'Junction Alignment', inst: 'SWITCH TO GREEN TRACK!', icon: '🔀', sub: 'Alpha Fork', color: 'green' as const },
+    { title: 'Transit Pass Stamp', inst: 'STAMP CENTRAL TICKET!', icon: '🎟️', sub: 'Central Terminal' },
+    { title: 'Low Clearance Warning', inst: 'DUCK UNDER VIADUCT!', icon: '⚠️', sub: 'Alpine Viaduct', hazard: 'LOW VIADUCT ARCH' },
+    { title: 'Beverage Stabilizer', inst: 'KEEP ESPRESSO LEVEL!', icon: '☕', sub: 'Hot Espresso', emoji: '☕' },
+    { title: 'Windshield Cleanser', inst: 'CLEAR RAIN SPRAY!', icon: '🧽', sub: 'Rain Spray', count: 3 },
+    { title: 'Reflex Cargo Catch', inst: 'CATCH CRISPY TOAST!', icon: '🍞', sub: 'Crispy Toast', emoji: '🍞' },
+    { title: 'Station Passenger Wake', inst: 'WAKE TIRED SCHOLAR!', icon: '⏰', sub: 'Tired Scholar', taps: 5 },
+    { title: 'Boiler Furnace Stoking', inst: 'FEED ANTHRACITE COAL!', icon: '🔥', sub: 'Anthracite Coal', emoji: '🪨' },
+    { title: 'Emergency Brake Pull', inst: 'PULL BRAKE LEVER!', icon: '🛑', sub: 'Brake Release', taps: 4 },
+    { title: 'Steam Whistle Blow', inst: 'PULL STEAM CORD!', icon: '📢', sub: 'Signal Whistle', taps: 3 },
+    { title: 'Luggage Rack Sort', inst: 'ORGANIZE TRUNKS!', icon: '🧳', sub: 'Leather Trunks', count: 4 },
+    { title: 'Conductor Badge Polish', inst: 'POLISH GOLD STAR!', icon: '✨', sub: 'Brass Star', taps: 6 },
   ];
 
-  const category = categories[Math.floor(Math.random() * categories.length)];
-  const variantIndex = Math.floor(Math.random() * 15);
-  const baseDuration = Math.max(3.0, 4.8 - Math.min(1.6, roundNumber * 0.08));
+  trainTasks.forEach((t, i) => {
+    games.push({
+      id: `train_task_${i}`,
+      category: 'train_tasks',
+      title: t.title,
+      instruction: t.inst,
+      icon: t.icon,
+      durationSec: 4.5,
+      params: {
+        variantIndex: i,
+        subType: t.sub,
+        targetColor: t.color || 'green',
+        targetRange: [35, 65],
+        hazardLabel: t.hazard || 'LOW CLEARANCE',
+        itemEmoji: t.emoji || '📦',
+        targetValue: t.count || 3,
+        requiredTaps: t.taps || 5,
+      },
+    });
+  });
 
-  switch (category) {
-    case 'track_switch': {
-      const switchTypes = [
-        { label: 'ALPHA EXPRESS FORK', safe: 'GREEN', target: 'green' as const },
-        { label: 'BETA CARGO JUNCTION', safe: 'BLUE', target: 'blue' as const },
-        { label: 'NORTHERN MAINLINE', safe: 'AMBER', target: 'amber' as const },
-        { label: 'HIGH-SPEED BYPASS', safe: 'RED', target: 'red' as const },
-        { label: 'SUMMIT DIVERSION', safe: 'GREEN', target: 'green' as const },
-      ];
-      const selected = switchTypes[variantIndex % switchTypes.length];
-      return {
-        id: `switch_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Junction Alignment',
-        instruction: `SWITCH TO ${selected.safe}!`,
-        icon: '🔀',
-        durationSec: baseDuration,
-        params: {
-          variantIndex,
-          subType: selected.label,
-          targetColor: selected.target,
-        },
-      };
-    }
+  // 2. Classic Arcade, Reaction & Timing Challenges (12 games)
+  const arcadeReflex = [
+    { title: 'Stopwatch Precision', inst: 'STOP EXACTLY ON 3.0S!', icon: '⏱️', sub: 'Chrono Test' },
+    { title: 'Wire Cut Challenge', inst: 'CUT THE BLUE WIRE!', icon: '✂️', sub: 'Circuit Disarm' },
+    { title: 'Coin Flip Catch', inst: 'CATCH GOLDEN COIN!', icon: '🪙', sub: 'Toss Reflex' },
+    { title: 'Laser Barrier Dodge', inst: 'DODGE THE LASER!', icon: '⚡', sub: 'Security Grid' },
+    { title: 'Balloon Pop Rush', inst: 'POP 3 RED BALLOONS!', icon: '🎈', sub: 'Balloon Burst', count: 3 },
+    { title: 'Target Tap Speed', inst: 'HIT BULLSEYE TAP!', icon: '🎯', sub: 'Precision Target' },
+    { title: 'Speed Tap Frenzy', inst: 'TAP 10 TIMES FAST!', icon: '💨', sub: 'Velocity Rush', taps: 10 },
+    { title: 'Quick Draw Duel', inst: 'DRAW WHEN READY!', icon: '🤠', sub: 'Western Duel' },
+    { title: 'Button Mash Reactor', inst: 'MASH TO POWER UP!', icon: '⚡', sub: 'Dynamo Generator', taps: 12 },
+    { title: 'Meteor Dodger', inst: 'EVADE FALLING DEBRIS!', icon: '☄️', sub: 'Asteroid Belt' },
+    { title: 'Shadow Reflex', inst: 'CATCH THE PHANTOM!', icon: '👥', sub: 'Specter Chase' },
+    { title: 'Chrono Trigger', inst: 'TRIGGER AT ZERO!', icon: '⌛', sub: 'Time Sync' },
+  ];
 
-    case 'stamp_ticket': {
-      const destinations = [
-        'Central Terminal', 'Meadowbrook', 'Pineridge Summit',
-        'Golden Cove Bay', 'Maple Valley', 'Silver River',
-        'Starlight Vista', 'Whispering Pines', 'Cap Solitude',
-      ];
-      const dest = destinations[variantIndex % destinations.length];
-      const targetMin = 35 + (variantIndex % 5) * 6;
-      return {
-        id: `stamp_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Transit Pass Stamp',
-        instruction: `STAMP FOR ${dest.toUpperCase()}!`,
-        icon: '🎟️',
-        durationSec: baseDuration + 0.3,
-        params: {
-          variantIndex,
-          subType: dest,
-          targetRange: [targetMin, targetMin + 18],
-        },
-      };
-    }
+  arcadeReflex.forEach((t, i) => {
+    games.push({
+      id: `arcade_reflex_${i}`,
+      category: 'arcade_reflex',
+      title: t.title,
+      instruction: t.inst,
+      icon: t.icon,
+      durationSec: 4.0,
+      params: {
+        variantIndex: i,
+        subType: t.sub,
+        requiredTaps: t.taps || 8,
+        targetValue: t.count || 3,
+      },
+    });
+  });
 
-    case 'duck_tunnel': {
-      const hazards = [
-        'LOW VIADUCT ARCH',
-        'ALPINE SNOW CHUTE',
-        'MOUNTAIN BORE TUNNEL',
-        'LOW SIGNAL CABLE',
-        'CANOPY BRANCHES',
-        'OLD TIMBER TRESTLE',
-      ];
-      const hazard = hazards[variantIndex % hazards.length];
-      return {
-        id: `duck_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Low Clearance Warning',
-        instruction: `DUCK UNDER ${hazard}!`,
-        icon: '⚠️',
-        durationSec: baseDuration,
-        params: {
-          variantIndex,
-          subType: hazard,
-          hazardLabel: hazard,
-        },
-      };
-    }
+  // 3. Puzzle, Memory, Pattern & Logic Games (12 games)
+  const puzzleLogic = [
+    { title: 'Circuit Connection', inst: 'CONNECT THE TERMINALS!', icon: '🔌', sub: 'Power Grid' },
+    { title: 'Vault Safe Combo', inst: 'CRACK 3-DIGIT LOCK!', icon: '🔐', sub: 'Secure Vault' },
+    { title: 'Memory Sequence', inst: 'REPEAT THE FLASH!', icon: '💡', sub: 'Pattern Memory' },
+    { title: 'Color Match Grid', inst: 'MATCH 3 AMBER TILES!', icon: '🟨', sub: 'Color Matrix' },
+    { title: 'Pipe Flow Waterway', inst: 'ALIGN THE WATER PIPE!', icon: '🚰', sub: 'Hydraulic Flow' },
+    { title: 'Gear Alignment', inst: 'MESH THE BRASS GEARS!', icon: '⚙️', sub: 'Clockwork Gear' },
+    { title: 'Light Bulb Circuit', inst: 'SCREW IN LIGHT BULB!', icon: '💡', sub: 'Illumination' },
+    { title: 'Slider Tile Puzzle', inst: 'SLIDE TO COMPLETE!', icon: '🧩', sub: 'Mosaic Tile' },
+    { title: 'Symbol Cipher Decode', inst: 'DECODE RUNIC SYMBOL!', icon: '🔤', sub: 'Secret Cipher' },
+    { title: 'Memory Card Pair', inst: 'MATCH PAIR OF CARDS!', icon: '🃏', sub: 'Memory Match' },
+    { title: 'Fuse Box Rewire', inst: 'REPLACE BLOWN FUSE!', icon: '⚡', sub: 'Fuse Panel' },
+    { title: 'Compass Rose Navigation', inst: 'ALIGN NORTH POINTER!', icon: '🧭', sub: 'Magnetic Compass' },
+  ];
 
-    case 'balance_coffee': {
-      const drinks = [
-        { name: 'HOT ESPRESSO', emoji: '☕' },
-        { name: 'EARL GREY TEA', emoji: '🫖' },
-        { name: 'HONEY LATTE', emoji: '🥛' },
-        { name: 'HERBAL INFUSION', emoji: '🍵' },
-        { name: 'HOT CHOCOLATE', emoji: '☕' },
-      ];
-      const drink = drinks[variantIndex % drinks.length];
-      return {
-        id: `balance_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Beverage Stabilizer',
-        instruction: `KEEP ${drink.name} LEVEL!`,
-        icon: drink.emoji,
-        durationSec: baseDuration + 0.6,
-        params: {
-          variantIndex,
-          subType: drink.name,
-          itemEmoji: drink.emoji,
-        },
-      };
-    }
+  puzzleLogic.forEach((t, i) => {
+    games.push({
+      id: `puzzle_logic_${i}`,
+      category: 'puzzle_logic',
+      title: t.title,
+      instruction: t.inst,
+      icon: t.icon,
+      durationSec: 5.0,
+      params: {
+        variantIndex: i,
+        subType: t.sub,
+        requiredTaps: 4,
+      },
+    });
+  });
 
-    case 'wipe_splat': {
-      const splatTypes = [
-        { name: 'RAIN SPRAY', count: 3 },
-        { name: 'AUTUMN LEAVES', count: 4 },
-        { name: 'MUD SPLATTER', count: 3 },
-        { name: 'FROST PATCH', count: 3 },
-        { name: 'RIVER MIST', count: 4 },
-      ];
-      const splat = splatTypes[variantIndex % splatTypes.length];
-      return {
-        id: `wipe_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Windshield Cleanser',
-        instruction: `CLEAR THE ${splat.name}!`,
-        icon: '🧽',
-        durationSec: baseDuration,
-        params: {
-          variantIndex,
-          subType: splat.name,
-          targetValue: splat.count,
-        },
-      };
-    }
+  // 4. Word, Trivia, Card & Board Classics (12 games)
+  const wordBoard = [
+    { title: 'Rock Paper Scissors', inst: 'BEAT CONDUCTOR HAND!', icon: '✊', sub: 'RPS Duel', options: ['Rock', 'Paper', 'Scissors'], correctOption: 'Paper' },
+    { title: 'Train Route Trivia', inst: 'CAPITAL OF MEADOWS?', icon: '🧠', sub: 'Geography Quiz', options: ['Meadowbrook', 'Vienna', 'London'], correctOption: 'Meadowbrook' },
+    { title: 'Anagram Unscramble', inst: 'UNSCRAMBLE "TRAIN"!', icon: '🔤', sub: 'Word Logic', options: ['T-R-A-I-N', 'T-I-R-A-N', 'N-I-A-R-T'], correctOption: 'T-R-A-I-N' },
+    { title: 'Domino Pair Match', inst: 'MATCH 6-6 DOMINO!', icon: '🁣', sub: 'Domino Classic' },
+    { title: 'Chess Checkmate Move', inst: 'QUEEN TO E8 MATE!', icon: '♟️', sub: 'Chess Puzzle' },
+    { title: 'Checker Jump Master', inst: 'DOUBLE JUMP CROWN!', icon: '🔴', sub: 'Checker Classic' },
+    { title: 'Lucky Dice Roll', inst: 'ROLL A 6 TO WIN!', icon: '🎲', sub: 'Dice Probability' },
+    { title: 'Vocabulary Guess', inst: 'GUESS LOFI RHYTHM!', icon: '📖', sub: 'Lexicon Test' },
+    { title: 'Blackjack 21', inst: 'STAND AT 21!', icon: '🃏', sub: 'Card 21' },
+    { title: 'Meridian Quiz', inst: 'WHICH WAY IS WEST?', icon: '🗺️', sub: 'Navigation Trivia' },
+    { title: 'Telegraph Morse Decode', inst: 'TAP SOS IN MORSE!', icon: '📟', sub: 'Morse Code' },
+    { title: 'Zodiac Constellation', inst: 'FIND URSA MAJOR!', icon: '✨', sub: 'Starlight Chart' },
+  ];
 
-    case 'catch_item': {
-      const items = [
-        { name: 'CRISPY TOAST', emoji: '🍞' },
-        { name: 'ESCAPED HAMSTER', emoji: '🐹' },
-        { name: 'DISPATCH TELEGRAM', emoji: '📜' },
-        { name: 'POCKET CHRONOMETER', emoji: '⏱️' },
-        { name: 'GOLDEN TICKET', emoji: '🎫' },
-      ];
-      const item = items[variantIndex % items.length];
-      return {
-        id: `catch_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Reflex Catch',
-        instruction: `CATCH THE ${item.name}!`,
-        icon: item.emoji,
-        durationSec: baseDuration,
-        params: {
-          variantIndex,
-          subType: item.name,
-          itemEmoji: item.emoji,
-        },
-      };
-    }
+  wordBoard.forEach((t, i) => {
+    games.push({
+      id: `word_board_${i}`,
+      category: 'word_board',
+      title: t.title,
+      instruction: t.inst,
+      icon: t.icon,
+      durationSec: 5.0,
+      params: {
+        variantIndex: i,
+        subType: t.sub,
+        options: t.options,
+        correctOption: t.correctOption,
+      },
+    });
+  });
 
-    case 'wake_passenger': {
-      const passengerTypes = [
-        'TIRED SCHOLAR',
-        'SLEEPY BOTANIST',
-        'CHIEF ARCHITECT',
-        'DREAMING POET',
-        'RESTING CONDUCTOR',
-      ];
-      const passenger = passengerTypes[variantIndex % passengerTypes.length];
-      const reqTaps = 4 + (variantIndex % 3);
-      return {
-        id: `wake_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Station Reminder',
-        instruction: `WAKE THE ${passenger}!`,
-        icon: '⏰',
-        durationSec: baseDuration + 0.2,
-        params: {
-          variantIndex,
-          subType: passenger,
-          requiredTaps: reqTaps,
-        },
-      };
-    }
+  // 5. Rhythm, Quick-Draw & Aiming Mini-Contests (12 games)
+  const rhythmAim = [
+    { title: 'Rhythm Beat Tap', inst: 'TAP ON THE BEAT!', icon: '🎵', sub: 'Chillhop Groove', taps: 6 },
+    { title: 'Bullseye Target Shoot', inst: 'HIT THE BULLSEYE!', icon: '🎯', sub: 'Marksmanship' },
+    { title: 'Bouncing Ball Catch', inst: 'CATCH BOUNCING ORB!', icon: '⚽', sub: 'Physics Arc' },
+    { title: 'Acoustic Guitar Strum', inst: 'STRUM CHORD G7!', icon: '🎸', sub: 'Jazz Strum' },
+    { title: 'Cymbal Crash Sync', inst: 'CRASH ON BEAT 4!', icon: '🥁', sub: 'Drummer Sync' },
+    { title: 'Arrow Wind Aim', inst: 'AIM AGAINST WIND!', icon: '🏹', sub: 'Archery Range' },
+    { title: 'Pendulum Timing', inst: 'STOP SWING AT CENTER!', icon: '🕰️', sub: 'Pendulum Beat' },
+    { title: 'Bubble Pop Arcade', inst: 'POP 5 FLOATING BUBBLES!', icon: '🫧', sub: 'Bubble Float', count: 5 },
+    { title: 'Carnival Ring Toss', inst: 'TOSS RING ON PEG!', icon: '🎪', sub: 'Carnival Game' },
+    { title: 'Hoops Slam Dunk', inst: 'SWISH BASKETBALL!', icon: '🏀', sub: 'Slam Dunk' },
+    { title: 'Metronome Synchronizer', inst: 'SYNC WITH 80 BPM!', icon: '⏲️', sub: 'Tempo Sync' },
+    { title: 'Chime Bell Harmony', inst: 'RING BRASS CHIME!', icon: '🔔', sub: 'Harmonic Bell' },
+  ];
 
-    case 'feed_furnace': {
-      const fuels = [
-        { name: 'ANTHRACITE COAL', emoji: '🪨' },
-        { name: 'BIOFUEL BRIQUETTE', emoji: '🪵' },
-        { name: 'ENERGY CORE', emoji: '🔋' },
-        { name: 'PEAT BLOCK', emoji: '🧱' },
-      ];
-      const fuel = fuels[variantIndex % fuels.length];
-      return {
-        id: `furnace_${variantIndex}_${Date.now()}`,
-        category,
-        title: 'Boiler Stoking',
-        instruction: `FEED ${fuel.name}!`,
-        icon: '🔥',
-        durationSec: baseDuration,
-        params: {
-          variantIndex,
-          subType: fuel.name,
-          itemEmoji: fuel.emoji,
-        },
-      };
-    }
-  }
+  rhythmAim.forEach((t, i) => {
+    games.push({
+      id: `rhythm_aim_${i}`,
+      category: 'rhythm_aim',
+      title: t.title,
+      instruction: t.inst,
+      icon: t.icon,
+      durationSec: 4.5,
+      params: {
+        variantIndex: i,
+        subType: t.sub,
+        requiredTaps: t.taps || 6,
+        targetValue: t.count || 5,
+      },
+    });
+  });
+
+  return games;
+}
+
+export function generateProceduralMicrogame(roundNumber: number): MicrogameInstance {
+  const all = getAllMicrogameDefinitions();
+  const randomIndex = Math.floor(Math.random() * all.length);
+  const base = all[randomIndex];
+  // return with a unique id
+  return {
+    ...base,
+    id: `${base.id}_${Date.now()}_${Math.random()}`,
+    durationSec: Math.max(3.0, 5.0 - Math.min(1.8, roundNumber * 0.08)),
+  };
 }
 
 export const MODERN_STATIONS: Station[] = [

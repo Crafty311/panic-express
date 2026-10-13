@@ -26,7 +26,7 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
   roundNumber,
   isNightMode = false,
 }) => {
-  const totalDuration = Math.max(2.4, microgame.durationSec / speedMultiplier);
+  const totalDuration = Math.max(3.0, microgame.durationSec / speedMultiplier);
   const [timeLeft, setTimeLeft] = useState(totalDuration);
   const [outcome, setOutcome] = useState<'playing' | 'won' | 'lost'>('playing');
 
@@ -35,28 +35,33 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
   const [isDucking, setIsDucking] = useState(false);
   const [hazardProgress, setHazardProgress] = useState(0);
 
-  // 2. Balance
-  const [balanceX, setBalanceX] = useState(0);
+  // 2. Overhauled Balance / Tilt Physics (Smooth inertia, damping, visual meter)
+  const [balanceAngle, setBalanceAngle] = useState(0); // -100 to 100
+  const [balanceVelocity, setBalanceVelocity] = useState(0);
 
   // 3. Stamp Ticket
   const [stampPos, setStampPos] = useState(10);
   const [stampDone, setStampDone] = useState(false);
 
-  // 4. Wipe Splat
+  // 4. Wipe Splat / Multi-tap
   const [splatsRemaining, setSplatsRemaining] = useState<number[]>([1, 1, 1]);
 
   // 5. Catch Item
   const [itemCaught, setItemCaught] = useState(false);
-  const [itemX, setItemX] = useState(30);
 
-  // 6. Wake Passenger
+  // 6. Taps / Mash / Wake
   const [currentTaps, setCurrentTaps] = useState(0);
 
-  // 7. Track Switch
+  // 7. Track Switch / Color Select
   const [switchDone, setSwitchDone] = useState(false);
 
-  // 8. Feed Furnace
-  const [furnaceFed, setFurnaceFed] = useState(false);
+  // 8. Rock Paper Scissors
+  const [rpsChoice, setRpsChoice] = useState<string | null>(null);
+  const [rpsResult, setRpsResult] = useState<string | null>(null);
+
+  // 9. Stopwatch exact stop
+  const [stopwatchTime, setStopwatchTime] = useState(0);
+  const [stopwatchStopped, setStopwatchStopped] = useState(false);
 
   const timerRef = useRef<number | null>(null);
 
@@ -66,15 +71,18 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
     setOutcome('playing');
     setIsDucking(false);
     setHazardProgress(0);
-    setBalanceX(0);
+    setBalanceAngle(0);
+    setBalanceVelocity(0);
     setStampPos(10);
     setStampDone(false);
     setSplatsRemaining([1, 1, 1]);
     setItemCaught(false);
-    setItemX(25 + Math.random() * 45);
     setCurrentTaps(0);
     setSwitchDone(false);
-    setFurnaceFed(false);
+    setRpsChoice(null);
+    setRpsResult(null);
+    setStopwatchTime(0);
+    setStopwatchStopped(false);
   }, [microgame, totalDuration]);
 
   // Countdown timer loop
@@ -100,68 +108,54 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [outcome, totalDuration, isDucking, balanceX, splatsRemaining]);
+  }, [outcome, totalDuration, balanceAngle]);
 
-  // Duck progress simulation
+  // Stopwatch timer increment
   useEffect(() => {
-    if (microgame.category !== 'duck_tunnel' || outcome !== 'playing') return;
+    if (microgame.title !== 'Stopwatch Precision' || outcome !== 'playing' || stopwatchStopped) return;
     const interval = setInterval(() => {
-      setHazardProgress((prev) => {
-        const next = prev + 3.8 * speedMultiplier;
-        if (next >= 65 && next <= 85) {
-          if (!isDucking) {
+      setStopwatchTime((prev) => prev + 0.1);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [microgame.title, outcome, stopwatchStopped]);
+
+  // Overhauled Balance / Tilt Physics Simulation with Smooth Inertia & Damping
+  useEffect(() => {
+    if (microgame.title !== 'Beverage Stabilizer' && microgame.instruction.indexOf('LEVEL') === -1) {
+      return;
+    }
+    if (outcome !== 'playing') return;
+
+    const interval = setInterval(() => {
+      setBalanceAngle((angle) => {
+        setBalanceVelocity((vel) => {
+          // random train jolt acceleration
+          const jolt = (Math.random() - 0.5) * 4.5 * speedMultiplier;
+          const nextVel = (vel + jolt) * 0.92; // damping friction
+          const nextAngle = angle + nextVel;
+
+          if (Math.abs(nextAngle) > 78) {
             triggerFail();
           }
-        }
-        return next;
+          return nextVel;
+        });
+
+        const nextAngle = angle + balanceVelocity;
+        return Math.max(-80, Math.min(80, nextAngle));
       });
     }, 50);
-    return () => clearInterval(interval);
-  }, [microgame.category, outcome, isDucking, speedMultiplier]);
 
-  // Balance jitter simulation
-  useEffect(() => {
-    if (microgame.category !== 'balance_coffee' || outcome !== 'playing') return;
-    const interval = setInterval(() => {
-      setBalanceX((prev) => {
-        const delta = (Math.random() - 0.5) * 16 * speedMultiplier;
-        const next = prev + delta;
-        if (Math.abs(next) > 85) {
-          triggerFail();
-        }
-        return next;
-      });
-    }, 90);
     return () => clearInterval(interval);
-  }, [microgame.category, outcome, speedMultiplier]);
-
-  // Moving stamp reticle
-  useEffect(() => {
-    if (microgame.category !== 'stamp_ticket' || outcome !== 'playing' || stampDone) return;
-    let dir = 1;
-    const interval = setInterval(() => {
-      setStampPos((prev) => {
-        let next = prev + dir * 5.5 * speedMultiplier;
-        if (next >= 92) dir = -1;
-        if (next <= 8) dir = 1;
-        return next;
-      });
-    }, 30);
-    return () => clearInterval(interval);
-  }, [microgame.category, outcome, stampDone, speedMultiplier]);
-
-  // Moving catchable item
-  useEffect(() => {
-    if (microgame.category !== 'catch_item' || outcome !== 'playing' || itemCaught) return;
-    const interval = setInterval(() => {
-      setItemX((prev) => (prev > 80 ? 15 : prev + 12 * speedMultiplier));
-    }, 200);
-    return () => clearInterval(interval);
-  }, [microgame.category, outcome, itemCaught, speedMultiplier]);
+  }, [microgame, outcome, speedMultiplier, balanceVelocity]);
 
   const handleTimeExpired = () => {
-    if (microgame.category === 'duck_tunnel' || microgame.category === 'balance_coffee') {
-      triggerWin();
+    if (microgame.category === 'train_tasks' || microgame.category === 'rhythm_aim') {
+      // If time expires on certain puzzles, check if passed or fail
+      if (currentTaps >= (microgame.params.requiredTaps || 4)) {
+        triggerWin();
+      } else {
+        triggerFail();
+      }
     } else {
       triggerFail();
     }
@@ -189,7 +183,7 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
   const handleStampPress = () => {
     if (outcome !== 'playing' || stampDone) return;
     setStampDone(true);
-    const range = microgame.params.targetRange || [40, 60];
+    const range = microgame.params.targetRange || [35, 65];
     if (stampPos >= range[0] && stampPos <= range[1]) {
       triggerWin();
     } else {
@@ -213,7 +207,7 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
     triggerWin();
   };
 
-  const handleWakeTap = () => {
+  const handleGenericTap = () => {
     if (outcome !== 'playing') return;
     audioEngine.playPop();
     const next = currentTaps + 1;
@@ -234,10 +228,32 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
     }
   };
 
-  const handleFeedCoal = () => {
-    if (outcome !== 'playing' || furnaceFed) return;
-    setFurnaceFed(true);
-    triggerWin();
+  const handleRpsChoice = (choice: string) => {
+    if (outcome !== 'playing' || rpsChoice) return;
+    setRpsChoice(choice);
+    audioEngine.playMechanicalClick();
+    const conductorChoices = ['Rock', 'Paper', 'Scissors'];
+    const comp = conductorChoices[Math.floor(Math.random() * conductorChoices.length)];
+    setRpsResult(comp);
+
+    // Win condition: Player beats comp or draws
+    if (choice === comp || (choice === 'Rock' && comp === 'Scissors') || (choice === 'Paper' && comp === 'Rock') || (choice === 'Scissors' && comp === 'Paper')) {
+      setTimeout(() => triggerWin(), 400);
+    } else {
+      setTimeout(() => triggerFail(), 400);
+    }
+  };
+
+  const handleStopwatchStop = () => {
+    if (outcome !== 'playing' || stopwatchStopped) return;
+    setStopwatchStopped(true);
+    audioEngine.playMechanicalClick();
+    // target is around 3.0s (2.8 to 3.4)
+    if (stopwatchTime >= 2.6 && stopwatchTime <= 3.4) {
+      triggerWin();
+    } else {
+      triggerFail();
+    }
   };
 
   const progressRatio = Math.max(0, Math.min(1, timeLeft / totalDuration));
@@ -267,7 +283,7 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
         <div className="flex flex-col items-center w-full text-center">
           <div className="flex items-center gap-3 mb-2">
             <span className="font-mono-space text-[10px] uppercase tracking-[0.15em] text-[#d97706] font-semibold">
-              Signal Milestone · Round {roundNumber}
+              Signal Challenge · Round {roundNumber}
             </span>
             <div className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full border ${
               isNightMode ? 'bg-stone-800 border-[#f8f7f4]/10' : 'bg-[#f8f7f4] border-[#1c1917]/10'
@@ -309,19 +325,17 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
         </div>
 
         {/* Interactive Game Stage */}
-        <div className="w-full min-h-[220px] flex items-center justify-center p-4 bg-[#f8f7f4] rounded-2xl border border-[#1c1917]/10 relative overflow-hidden">
+        <div className="w-full min-h-[220px] flex items-center justify-center p-4 bg-[#f8f7f4] rounded-2xl border border-[#1c1917]/10 relative overflow-hidden text-[#1c1917]">
           
           {/* 1. DUCK TUNNEL */}
-          {microgame.category === 'duck_tunnel' && (
+          {microgame.instruction.indexOf('DUCK') !== -1 && (
             <div className="w-full h-48 flex flex-col items-center justify-end relative">
               <div
                 className="absolute top-0 left-0 right-0 h-16 bg-[#1c1917] border-b-2 border-[#d97706] rounded-b-xl flex items-center justify-center shadow-md transition-all text-[#f8f7f4]"
-                style={{
-                  transform: `translateY(${Math.min(0, -60 + hazardProgress)}px)`,
-                }}
+                style={{ transform: `translateY(${Math.min(0, -60 + hazardProgress)}px)` }}
               >
                 <span className="font-mono-space text-[10px] uppercase tracking-widest text-amber-300 font-bold">
-                  {microgame.params.hazardLabel || 'LOW CLEARANCE ARCH'}
+                  {microgame.params.subType}
                 </span>
               </div>
 
@@ -338,9 +352,7 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
                 onTouchStart={() => setIsDucking(true)}
                 onTouchEnd={() => setIsDucking(false)}
                 className={`mt-4 px-8 py-2.5 rounded-full font-mono-space text-xs uppercase tracking-wider transition-all border ${
-                  isDucking
-                    ? 'bg-emerald-600 border-emerald-500 text-white scale-95 shadow-sm'
-                    : 'bg-[#1c1917] hover:bg-stone-800 border-[#1c1917] text-[#f8f7f4]'
+                  isDucking ? 'bg-emerald-600 border-emerald-500 text-white scale-95 shadow-sm' : 'bg-[#1c1917] hover:bg-stone-800 border-[#1c1917] text-[#f8f7f4]'
                 }`}
               >
                 {isDucking ? 'Holding Down' : 'Hold to Duck'}
@@ -348,14 +360,24 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
             </div>
           )}
 
-          {/* 2. BALANCE COFFEE */}
-          {microgame.category === 'balance_coffee' && (
-            <div className="w-full flex flex-col items-center gap-5">
-              <div className="relative w-72 h-28 bg-white border border-[#1c1917]/15 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
+          {/* 2. OVERHAULED TILT BALANCE (COFFEE / TRAY STABILIZER) */}
+          {(microgame.title.includes('Stabilizer') || microgame.instruction.includes('LEVEL') || microgame.instruction.includes('BALANCE')) && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <div className="relative w-80 h-28 bg-white border border-[#1c1917]/15 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
+                {/* Safe zone indicator */}
                 <div className="absolute inset-y-0 w-24 bg-emerald-500/15 border-x border-emerald-500/30" />
+                
+                {/* Visual tilt meter bar */}
+                <div className="absolute top-2 left-4 right-4 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-600 transition-all duration-75"
+                    style={{ width: `${50 + (balanceAngle / 80) * 50}%` }}
+                  />
+                </div>
+
                 <div
                   className="transition-transform duration-75 flex flex-col items-center"
-                  style={{ transform: `translateX(${balanceX * 1.2}px) rotate(${balanceX * 0.25}deg)` }}
+                  style={{ transform: `translateX(${balanceAngle * 1.4}px) rotate(${balanceAngle * 0.3}deg)` }}
                 >
                   <span className="text-4xl drop-shadow">{microgame.params.itemEmoji || '☕'}</span>
                   <div className="w-16 h-2 bg-[#1c1917] rounded-full mt-1" />
@@ -364,171 +386,189 @@ export const MicrogameOverlay: React.FC<MicrogameOverlayProps> = ({
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setBalanceX((x) => Math.max(-75, x - 18))}
-                  className="px-5 py-2 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
+                  onClick={() => {
+                    audioEngine.playMechanicalClick();
+                    setBalanceVelocity((v) => v - 12);
+                  }}
+                  className="px-5 py-2.5 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
                 >
-                  ◀ Tilt Left
+                  ◀ Nudge Left
                 </button>
                 <button
-                  onClick={() => setBalanceX((x) => Math.min(75, x + 18))}
-                  className="px-5 py-2 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
+                  onClick={() => {
+                    audioEngine.playMechanicalClick();
+                    setBalanceVelocity((v) => v + 12);
+                  }}
+                  className="px-5 py-2.5 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
                 >
-                  Tilt Right ▶
+                  Nudge Right ▶
                 </button>
               </div>
             </div>
           )}
 
-          {/* 3. STAMP TICKET */}
-          {microgame.category === 'stamp_ticket' && (
-            <div className="w-full flex flex-col items-center gap-5">
+          {/* 3. ROCK PAPER SCISSORS DUEL */}
+          {microgame.title === 'Rock Paper Scissors' && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <p className="font-serif-cormorant text-sm font-semibold">
+                {rpsChoice ? `Conductor chose: ${rpsResult}` : 'Select your move against the conductor!'}
+              </p>
+
+              <div className="flex gap-4">
+                {['Rock', 'Paper', 'Scissors'].map((opt) => (
+                  <button
+                    key={opt}
+                    disabled={Boolean(rpsChoice)}
+                    onClick={() => handleRpsChoice(opt)}
+                    className={`px-5 py-3 rounded-2xl border font-mono-space text-xs uppercase tracking-wider transition-all shadow-sm ${
+                      rpsChoice === opt
+                        ? 'bg-emerald-600 text-white border-emerald-500 scale-105'
+                        : 'bg-white hover:bg-stone-100 border-[#1c1917]/20 text-[#1c1917]'
+                    }`}
+                  >
+                    <span className="text-2xl block mb-1">
+                      {opt === 'Rock' ? '✊' : opt === 'Paper' ? '📄' : '✌️'}
+                    </span>
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 4. STOPWATCH PRECISION */}
+          {microgame.title === 'Stopwatch Precision' && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <div className="w-36 h-36 rounded-full border-4 border-[#1c1917] bg-white flex flex-col items-center justify-center shadow-md">
+                <span className="font-mono-space text-2xl font-bold">
+                  {stopwatchTime.toFixed(1)}s
+                </span>
+                <span className="font-mono-space text-[10px] opacity-60">Target: 3.0s</span>
+              </div>
+
+              <button
+                disabled={stopwatchStopped}
+                onClick={handleStopwatchStop}
+                className="px-8 py-2.5 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
+              >
+                {stopwatchStopped ? 'Stopped!' : 'STOP AT 3.0S'}
+              </button>
+            </div>
+          )}
+
+          {/* 5. TICKET STAMP */}
+          {microgame.instruction.includes('STAMP') && microgame.title !== 'Rock Paper Scissors' && (
+            <div className="w-full flex flex-col items-center gap-4">
               <div className="relative w-80 h-28 bg-white border border-[#1c1917]/15 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                 <div
                   className="absolute inset-y-2 w-14 border-2 border-dashed border-emerald-600 bg-emerald-50 rounded-xl flex items-center justify-center text-[10px] text-emerald-800 font-mono-space font-bold"
-                  style={{ left: `${(microgame.params.targetRange || [40, 60])[0]}%` }}
+                  style={{ left: `${(microgame.params.targetRange || [35, 65])[0]}%` }}
                 >
-                  STAMP
+                  ZONE
                 </div>
 
                 <div
-                  className="absolute top-2 bottom-2 w-3 bg-rose-600 rounded-full shadow-md"
+                  className="absolute top-2 bottom-2 w-3 bg-rose-600 rounded-full shadow-md transition-all"
                   style={{ left: `${stampPos}%` }}
                 />
 
-                <div>
-                  <span className="block font-serif-cormorant text-base font-semibold text-[#1c1917] tracking-wide uppercase">
-                    {microgame.params.subType} Pass
-                  </span>
-                  <span className="font-mono-space text-[9px] uppercase tracking-wider text-[#1c1917]/50">FIRST CLASS SCENIC</span>
-                </div>
-                <span className="text-2xl">🎟️</span>
+                <span className="font-serif-cormorant text-sm font-semibold uppercase">
+                  {microgame.params.subType}
+                </span>
               </div>
 
               <button
                 onClick={handleStampPress}
-                disabled={stampDone}
-                className="px-8 py-2.5 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-sm disabled:opacity-50"
+                className="px-8 py-2.5 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
               >
-                {stampDone ? 'Stamped' : 'Stamp Target'}
+                STAMP NOW! 🎟️
               </button>
             </div>
           )}
 
-          {/* 4. WIPE SPLAT */}
-          {microgame.category === 'wipe_splat' && (
-            <div className="w-full flex items-center justify-center gap-5">
-              {splatsRemaining.map((active, i) =>
-                active === 1 ? (
-                  <button
-                    key={i}
-                    onClick={() => handleWipeSpot(i)}
-                    className="w-16 h-16 rounded-full bg-white hover:bg-[#1c1917]/5 border border-[#1c1917]/20 flex items-center justify-center text-3xl transition-transform active:scale-90 shadow-sm"
-                  >
-                    💧
-                  </button>
-                ) : (
-                  <div key={i} className="w-16 h-16 flex items-center justify-center text-2xl text-emerald-600">
-                    ✨
-                  </div>
-                )
-              )}
-            </div>
-          )}
-
-          {/* 5. CATCH ITEM */}
-          {microgame.category === 'catch_item' && (
-            <div className="w-full h-36 relative flex items-center">
-              {!itemCaught ? (
-                <button
-                  onClick={handleCatchPress}
-                  className="absolute transition-all duration-150 text-4xl hover:scale-125"
-                  style={{ left: `${itemX}%` }}
-                >
-                  {microgame.params.itemEmoji || '🍞'}
-                </button>
-              ) : (
-                <div className="w-full flex justify-center font-serif-cormorant italic text-3xl text-emerald-800 font-semibold">
-                  Captured! ✓
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 6. WAKE PASSENGER */}
-          {microgame.category === 'wake_passenger' && (
+          {/* 6. TRACK SWITCH / COLOR MATCH */}
+          {microgame.category === 'train_tasks' && microgame.instruction.includes('SWITCH') && (
             <div className="w-full flex flex-col items-center gap-4">
-              <span className="text-5xl animate-bounce">😴</span>
-              <button
-                onClick={handleWakeTap}
-                className="px-8 py-2.5 rounded-full bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-xs uppercase tracking-wider transition-all active:scale-95 shadow-sm"
-              >
-                Tap to Alert ({currentTaps} / {microgame.params.requiredTaps || 5})
-              </button>
-            </div>
-          )}
-
-          {/* 7. TRACK SWITCH */}
-          {microgame.category === 'track_switch' && (
-            <div className="w-full flex items-center justify-center gap-3">
-              {(['red', 'green', 'blue', 'amber'] as const).map((color) => {
-                const bg = {
-                  red: 'bg-rose-700 hover:bg-rose-600',
-                  green: 'bg-emerald-700 hover:bg-emerald-600',
-                  blue: 'bg-sky-700 hover:bg-sky-600',
-                  amber: 'bg-amber-600 hover:bg-amber-500',
-                }[color];
-                return (
+              <p className="font-serif-cormorant text-sm font-semibold">
+                Select the correct junction switch color:
+              </p>
+              <div className="flex gap-3">
+                {(['green', 'blue', 'amber', 'red'] as const).map((color) => (
                   <button
                     key={color}
                     onClick={() => handleSwitchPress(color)}
-                    disabled={switchDone}
-                    className={`px-4 py-3 rounded-xl font-mono-space font-bold text-xs uppercase tracking-wider text-white transition-transform active:scale-95 shadow-sm ${bg}`}
+                    className={`w-12 h-12 rounded-2xl border-2 shadow-md transition-transform active:scale-95 uppercase font-mono-space text-xs font-bold ${
+                      color === 'green' ? 'bg-emerald-500 border-emerald-700 text-white' :
+                      color === 'blue' ? 'bg-blue-500 border-blue-700 text-white' :
+                      color === 'amber' ? 'bg-amber-500 border-amber-700 text-white' :
+                      'bg-rose-500 border-rose-700 text-white'
+                    }`}
                   >
-                    {color} Line
+                    {color[0].toUpperCase()}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
           )}
 
-          {/* 8. FEED FURNACE */}
-          {microgame.category === 'feed_furnace' && (
-            <div className="w-full flex items-center justify-center gap-8">
-              <div className="w-24 h-24 rounded-2xl bg-[#1c1917] border border-[#1c1917]/20 flex flex-col items-center justify-center text-white">
-                <span className="text-3xl">🔥</span>
-                <span className="text-[9px] uppercase tracking-wider text-amber-300 mt-1 font-mono-space">Boiler</span>
+          {/* 7. WINDSHIELD WIPER / CLEANSER */}
+          {microgame.instruction.includes('CLEAR') && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <p className="font-serif-cormorant text-sm font-semibold">
+                Tap all spots to clean the windshield:
+              </p>
+              <div className="flex gap-4">
+                {splatsRemaining.map((val, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleWipeSpot(idx)}
+                    className={`w-14 h-14 rounded-2xl border flex items-center justify-center text-2xl transition-all shadow-sm ${
+                      val === 1 ? 'bg-white border-[#1c1917]/20 hover:scale-105' : 'bg-emerald-100 border-emerald-300 opacity-40 scale-95'
+                    }`}
+                  >
+                    {val === 1 ? '🍂' : '✨'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 8. GENERAL MASH / TAP CHALLENGE (Default Fallback for Taps) */}
+          {microgame.params.requiredTaps && !microgame.instruction.includes('DUCK') && (
+            <div className="w-full flex flex-col items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="font-mono-space text-xs font-bold">
+                  Taps: {currentTaps} / {microgame.params.requiredTaps || 5}
+                </span>
               </div>
 
-              {!furnaceFed ? (
-                <button
-                  onClick={handleFeedCoal}
-                  className="p-4 rounded-2xl bg-white hover:bg-stone-100 border border-[#1c1917]/20 text-3xl transition-transform active:scale-95 shadow-sm"
-                  title="Deliver fuel"
-                >
-                  {microgame.params.itemEmoji || '🪨'}
-                </button>
-              ) : (
-                <div className="font-serif-cormorant italic text-lg font-semibold text-emerald-800">Fueled! ✓</div>
-              )}
+              <button
+                onClick={handleGenericTap}
+                className="px-10 py-3 rounded-2xl bg-[#1c1917] hover:bg-stone-800 text-[#f8f7f4] font-mono-space text-sm uppercase tracking-wider shadow-md transition-all active:scale-95"
+              >
+                TAP RAPIDLY! ⚡
+              </button>
+            </div>
+          )}
+
+          {/* Outcome Overlays */}
+          {outcome === 'won' && (
+            <div className="absolute inset-0 bg-emerald-600/90 backdrop-blur-sm flex flex-col items-center justify-center text-white animate-in zoom-in duration-200">
+              <CheckCircle2 className="w-16 h-16 mb-2 animate-bounce" />
+              <h3 className="font-serif-cormorant italic text-3xl font-bold">Challenge Cleared!</h3>
+              <p className="font-mono-space text-xs uppercase tracking-widest mt-1">Reward +100 Coins</p>
+            </div>
+          )}
+
+          {outcome === 'lost' && (
+            <div className="absolute inset-0 bg-rose-600/90 backdrop-blur-sm flex flex-col items-center justify-center text-white animate-in zoom-in duration-200">
+              <XCircle className="w-16 h-16 mb-2 animate-pulse" />
+              <h3 className="font-serif-cormorant italic text-3xl font-bold">Missed Milestone!</h3>
+              <p className="font-mono-space text-xs uppercase tracking-widest mt-1">Heart Lost</p>
             </div>
           )}
 
         </div>
-
-        {/* Outcome result pill */}
-        {outcome === 'won' && (
-          <div className="flex items-center gap-2 text-emerald-800 font-mono-space text-xs uppercase tracking-wider bg-emerald-50 border border-emerald-300 px-5 py-2 rounded-full animate-bounce shadow-sm font-semibold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-            <span>Milestone Cleared! +100 Points</span>
-          </div>
-        )}
-
-        {outcome === 'lost' && (
-          <div className="flex items-center gap-2 text-rose-800 font-mono-space text-xs uppercase tracking-wider bg-rose-50 border border-rose-300 px-5 py-2 rounded-full shadow-sm font-semibold">
-            <XCircle className="w-4 h-4 text-rose-700" />
-            <span>Signal Missed</span>
-          </div>
-        )}
 
       </div>
     </div>

@@ -17,6 +17,7 @@ import { CompartmentInterior } from './components/CompartmentInterior';
 import { MicrogameOverlay } from './components/MicrogameOverlay';
 import { StationArrivalModal } from './components/StationArrivalModal';
 import { UpgradeShopModal } from './components/UpgradeShopModal';
+import { ArcadeCatalogModal } from './components/ArcadeCatalogModal';
 
 export default function App() {
   // Station & Route
@@ -83,6 +84,7 @@ export default function App() {
   // Modals
   const [isStationArrivalOpen, setIsStationArrivalOpen] = useState<boolean>(false);
   const [isUpgradeShopOpen, setIsUpgradeShopOpen] = useState<boolean>(false);
+  const [isArcadeCatalogOpen, setIsArcadeCatalogOpen] = useState<boolean>(false);
 
   // Current passenger aboard
   const [currentPassenger, setCurrentPassenger] = useState<Passenger>(COZY_PASSENGERS[0]);
@@ -264,7 +266,7 @@ export default function App() {
       {/* 1. PANORAMIC OBSERVATION SCENERY CANVAS (MULTI-BIOME, DAY/NIGHT & 10 STATIONS) */}
       <TrainWindowCanvas
         speedKmH={speedKmH * speedMultiplier}
-        tunnelActive={activeMicrogame?.category === 'duck_tunnel' || isTunnelTransition}
+        tunnelActive={activeMicrogame?.title?.includes('Clearance') || isTunnelTransition}
         isNightMode={isNightMode}
         currentBiome={currentBiome}
         stationVariant={stationVariant}
@@ -287,6 +289,7 @@ export default function App() {
         onToggleNightMode={handleToggleNightMode}
         onWhistleClick={handleWhistleClick}
         onOpenDepot={() => setIsUpgradeShopOpen(true)}
+        onOpenArcade={() => setIsArcadeCatalogOpen(true)}
         signalPostAvailable={signalPostAvailable}
         onAcceptSignalChallenge={handleAcceptSignalChallenge}
         onDismissSignalPost={handleDismissSignalPost}
@@ -311,6 +314,20 @@ export default function App() {
           maxHearts={maxHearts}
           roundNumber={roundNumber}
           isNightMode={isNightMode}
+        />
+      )}
+
+      {/* ARCADE CATALOG PARLOR MODAL (60 GAMES) */}
+      {isArcadeCatalogOpen && (
+        <ArcadeCatalogModal
+          onClose={() => setIsArcadeCatalogOpen(false)}
+          onPlayGame={(game) => {
+            setIsArcadeCatalogOpen(false);
+            setActiveMicrogame(game);
+            setIsPlayingMicrogame(true);
+          }}
+          isNightMode={isNightMode}
+          coins={coins}
         />
       )}
 

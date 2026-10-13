@@ -30,6 +30,7 @@ interface CompartmentInteriorProps {
   onToggleNightMode: () => void;
   onWhistleClick: () => void;
   onOpenDepot: () => void;
+  onOpenArcade: () => void;
   signalPostAvailable: boolean;
   onAcceptSignalChallenge: () => void;
   onDismissSignalPost: () => void;
@@ -50,6 +51,7 @@ export const CompartmentInterior: React.FC<CompartmentInteriorProps> = ({
   onToggleNightMode,
   onWhistleClick,
   onOpenDepot,
+  onOpenArcade,
   signalPostAvailable,
   onAcceptSignalChallenge,
   onDismissSignalPost,
@@ -236,6 +238,19 @@ export const CompartmentInterior: React.FC<CompartmentInteriorProps> = ({
               title="Open Locomotive Depot & Atelier"
             >
               Atelier & Depot
+            </button>
+
+            {/* Arcade Parlor Button */}
+            <button
+              onClick={() => { audioEngine.playMechanicalClick(); onOpenArcade(); }}
+              className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-full font-mono-space text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95 border ${
+                isNightMode
+                  ? 'bg-amber-500/20 border-amber-400/40 text-amber-300 hover:bg-amber-500/30'
+                  : 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+              }`}
+              title="Open 60-Game Arcade Parlor Catalog"
+            >
+              🎮 Arcade Parlor
             </button>
 
             {/* Sound Effects & Whistle */}
