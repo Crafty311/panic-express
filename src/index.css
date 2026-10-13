@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #0c0a09;
+    color: #f5f5f4;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  h1, h2, h3, .font-serif-vintage {
+    font-family: 'Cinzel', serif;
+  }
+}
+
+/* Subtle train cabin rhythmic sway */
+@keyframes trainSway {
+  0% { transform: translate(0px, 0px) rotate(0deg); }
+  25% { transform: translate(0.4px, -0.6px) rotate(0.06deg); }
+  50% { transform: translate(-0.3px, 0.4px) rotate(-0.04deg); }
+  75% { transform: translate(0.5px, 0.2px) rotate(0.05deg); }
+  100% { transform: translate(0px, 0px) rotate(0deg); }
+}
+
+.train-cabin-sway {
+  animation: trainSway 2.4s ease-in-out infinite;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(20, 16, 12, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(180, 140, 90, 0.4);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 170, 110, 0.7);
+}

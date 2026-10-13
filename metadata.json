@@ -1,0 +1,6 @@
+{
+  "name": "Panic Express: Scenic Railway Journey",
+  "description": "An immersive train compartment experience with moving window scenery, real-time dynamic weather, conductor challenges, passenger pickups, and train customisation upgrades.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
